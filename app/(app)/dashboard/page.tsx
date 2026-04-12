@@ -66,9 +66,9 @@ export default function DashboardPage() {
   const getCaseById = (id: string) => cases.find((c) => c.id === id);
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="p-6 max-w-4xl mx-auto">
       {/* Header */}
-      <div className="mb-8 flex items-start justify-between">
+      <div className="mb-6 flex items-start justify-between">
         <div>
           <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">
             {format(now, "EEEE d. MMMM yyyy", { locale: nb })}
@@ -85,41 +85,35 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        <div className="rounded-2xl bg-indigo-50 border border-indigo-100 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">I dag</p>
-            <div className="rounded-lg bg-indigo-100 p-1.5">
-              <Clock className="h-4 w-4 text-indigo-600" />
-            </div>
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="rounded-xl bg-indigo-50 border border-indigo-100 px-4 py-3.5 flex items-center gap-3">
+          <div className="rounded-lg bg-indigo-100 p-2 shrink-0">
+            <Clock className="h-4 w-4 text-indigo-600" />
           </div>
-          <p className="text-3xl font-bold text-indigo-900 tracking-tight">
-            {minutesToHours(stats.today)}
-          </p>
+          <div>
+            <p className="text-xs font-medium text-indigo-500 mb-0.5">I dag</p>
+            <p className="text-2xl font-bold text-indigo-900 leading-none">{minutesToHours(stats.today)}</p>
+          </div>
         </div>
 
-        <div className="rounded-2xl bg-violet-50 border border-violet-100 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-semibold text-violet-600 uppercase tracking-wider">Denne uken</p>
-            <div className="rounded-lg bg-violet-100 p-1.5">
-              <TrendingUp className="h-4 w-4 text-violet-600" />
-            </div>
+        <div className="rounded-xl bg-violet-50 border border-violet-100 px-4 py-3.5 flex items-center gap-3">
+          <div className="rounded-lg bg-violet-100 p-2 shrink-0">
+            <TrendingUp className="h-4 w-4 text-violet-600" />
           </div>
-          <p className="text-3xl font-bold text-violet-900 tracking-tight">
-            {minutesToHours(stats.week)}
-          </p>
+          <div>
+            <p className="text-xs font-medium text-violet-500 mb-0.5">Denne uken</p>
+            <p className="text-2xl font-bold text-violet-900 leading-none">{minutesToHours(stats.week)}</p>
+          </div>
         </div>
 
-        <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">Denne måneden</p>
-            <div className="rounded-lg bg-emerald-100 p-1.5">
-              <CalendarDays className="h-4 w-4 text-emerald-600" />
-            </div>
+        <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-3.5 flex items-center gap-3">
+          <div className="rounded-lg bg-emerald-100 p-2 shrink-0">
+            <CalendarDays className="h-4 w-4 text-emerald-600" />
           </div>
-          <p className="text-3xl font-bold text-emerald-900 tracking-tight">
-            {minutesToHours(stats.month)}
-          </p>
+          <div>
+            <p className="text-xs font-medium text-emerald-600 mb-0.5">Denne måneden</p>
+            <p className="text-2xl font-bold text-emerald-900 leading-none">{minutesToHours(stats.month)}</p>
+          </div>
         </div>
       </div>
 
