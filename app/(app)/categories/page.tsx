@@ -50,9 +50,15 @@ function CategoryDialog({ open, onClose, onSave, initial }: CategoryDialogProps)
   const handleSave = async () => {
     if (!name.trim()) return;
     setSaving(true);
-    await onSave(name.trim(), color);
-    setSaving(false);
-    onClose();
+    try {
+      await onSave(name.trim(), color);
+      onClose();
+    } catch (err) {
+      console.error("Feil ved lagring:", err);
+      alert("Kunne ikke lagre: " + String(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
