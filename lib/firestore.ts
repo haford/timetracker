@@ -40,8 +40,17 @@ export const subscribeCategories = (
   );
 };
 
-export const addCategory = (userId: string, data: Omit<Category, "id">) =>
-  addDoc(userCol(userId, "categories"), data);
+export const addCategory = async (userId: string, data: Omit<Category, "id">) => {
+  console.log("[Firestore] addCategory start", { userId, data });
+  const colRef = userCol(userId, "categories");
+  console.log("[Firestore] collection path:", colRef.path);
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("Firestore-tilkobling timeout etter 8 sekunder")), 8000)
+  );
+  const result = await Promise.race([addDoc(colRef, data), timeout]);
+  console.log("[Firestore] addCategory success", result);
+  return result;
+};
 
 export const updateCategory = (
   userId: string,
