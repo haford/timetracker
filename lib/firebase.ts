@@ -18,6 +18,11 @@ let _db: Firestore | undefined;
 
 function getApp(): FirebaseApp {
   if (!_app) {
+    console.log("[Firebase] config check:", {
+      apiKey: firebaseConfig.apiKey ? "satt" : "MANGLER",
+      projectId: firebaseConfig.projectId ?? "MANGLER",
+      authDomain: firebaseConfig.authDomain ?? "MANGLER",
+    });
     _app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
   }
   return _app;
