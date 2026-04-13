@@ -5,36 +5,28 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCases } from "@/hooks/useCases";
 import { useTimeEntries } from "@/hooks/useTimeEntries";
 import { useCategories } from "@/hooks/useCategories";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CategoryBadge } from "@/components/CategoryBadge";
+import { Download, ChevronLeft, ChevronRight } from "lucide-react";
 import {
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  ResponsiveContainer,
-  Legend,
-} from "recharts";
-import {
-  startOfMonth,
-  endOfMonth,
-  subMonths,
+  startOfDay, endOfDay,
+  startOfWeek, endOfWeek,
+  startOfMonth, endOfMonth,
+  startOfYear, endOfYear,
+  addDays, subDays,
+  addWeeks, subWeeks,
+  addMonths, subMonths,
+  addYears, subYears,
   isWithinInterval,
   format,
-  eachWeekOfInterval,
-  startOfWeek,
-  endOfWeek,
+  eachDayOfInterval,
+  eachMonthOfInterval,
+  isSameDay,
 } from "date-fns";
 import { nb } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+
+type Period = "dag" | "uke" | "måned" | "år";
 
 function minutesToHours(min: number): string {
   const h = Math.floor(min / 60);
@@ -44,84 +36,63 @@ function minutesToHours(min: number): string {
   return `${h}t ${m}m`;
 }
 
-function toHoursDecimal(min: number): number {
-  return Math.round((min / 60) * 10) / 10;
-}
-
 export default function ReportsPage() {
   const { user } = useAuth();
   const { cases } = useCases(user?.uid);
   const { entries } = useTimeEntries(user?.uid);
   const { categories } = useCategories(user?.uid);
 
-  const [from, setFrom] = useState<Date>(startOfMonth(subMonths(new Date(), 2)));
-  const [to, setTo] = useState<Date>(endOfMonth(new Date()));
+  const [period, setPeriod] = useState<Period>("dag");
+  const [anchor, setAnchor] = useState(new Date());
+
+  const { start, end } = useMemo(() => {
+    if (period === "dag") return { start: startOfDay(anchor), end: endOfDay(anchor) };
+    if (period === "uke") return { start: startOfWeek(anchor, { weekStartsOn: 1 }), end: endOfWeek(anchor, { weekStartsOn: 1 }) };
+    if (period === "måned") return { start: startOfMonth(anchor), end: endOfMonth(anchor) };
+    return { start: startOfYear(anchor), end: endOfYear(anchor) };
+  }, [period, anchor]);
 
   const filtered = useMemo(
-    () => entries.filter((e) => isWithinInterval(e.date, { start: from, end: to })),
-    [entries, from, to]
+    () => entries.filter((e) => isWithinInterval(e.date, { start, end })),
+    [entries, start, end]
   );
-
-  // Timer per kategori (Pie)
-  const byCategory = useMemo(() => {
-    const map: Record<string, number> = {};
-    filtered.forEach((e) => {
-      const c = cases.find((c) => c.id === e.caseId);
-      const cat = categories.find((cat) => cat.id === c?.categoryId);
-      const label = cat?.name ?? "Uten kategori";
-      map[label] = (map[label] ?? 0) + e.durationMinutes;
-    });
-    return Object.entries(map).map(([name, minutes]) => ({
-      name,
-      hours: toHoursDecimal(minutes),
-      color: categories.find((c) => c.name === name)?.color ?? "#94a3b8",
-    }));
-  }, [filtered, cases, categories]);
-
-  // Timer per uke (Bar)
-  const byWeek = useMemo(() => {
-    const weeks = eachWeekOfInterval({ start: from, end: to }, { weekStartsOn: 1 });
-    return weeks.map((weekStart) => {
-      const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
-      const total = filtered
-        .filter((e) => isWithinInterval(e.date, { start: weekStart, end: weekEnd }))
-        .reduce((sum, e) => sum + e.durationMinutes, 0);
-      return {
-        week: format(weekStart, "d. MMM", { locale: nb }),
-        timer: toHoursDecimal(total),
-      };
-    });
-  }, [filtered, from, to]);
-
-  // Timer per sak (tabell)
-  const byCase = useMemo(() => {
-    const map: Record<string, number> = {};
-    filtered.forEach((e) => { map[e.caseId] = (map[e.caseId] ?? 0) + e.durationMinutes; });
-    return Object.entries(map)
-      .map(([caseId, minutes]) => ({
-        caseId,
-        title: cases.find((c) => c.id === caseId)?.title ?? "Ukjent sak",
-        minutes,
-        categoryName: categories.find((cat) => cat.id === cases.find((c) => c.id === caseId)?.categoryId)?.name ?? "–",
-      }))
-      .sort((a, b) => b.minutes - a.minutes);
-  }, [filtered, cases, categories]);
 
   const totalMinutes = filtered.reduce((sum, e) => sum + e.durationMinutes, 0);
 
-  // CSV export
+  function navigate(dir: -1 | 1) {
+    if (period === "dag") setAnchor(dir === 1 ? addDays(anchor, 1) : subDays(anchor, 1));
+    else if (period === "uke") setAnchor(dir === 1 ? addWeeks(anchor, 1) : subWeeks(anchor, 1));
+    else if (period === "måned") setAnchor(dir === 1 ? addMonths(anchor, 1) : subMonths(anchor, 1));
+    else setAnchor(dir === 1 ? addYears(anchor, 1) : subYears(anchor, 1));
+  }
+
+  const periodLabel = useMemo(() => {
+    if (period === "dag") return format(anchor, "EEEE d. MMMM yyyy", { locale: nb });
+    if (period === "uke") {
+      const ws = startOfWeek(anchor, { weekStartsOn: 1 });
+      const we = endOfWeek(anchor, { weekStartsOn: 1 });
+      return `Uke ${format(ws, "w")} · ${format(ws, "d. MMM", { locale: nb })} – ${format(we, "d. MMM yyyy", { locale: nb })}`;
+    }
+    if (period === "måned") return format(anchor, "MMMM yyyy", { locale: nb });
+    return format(anchor, "yyyy");
+  }, [period, anchor]);
+
+  const getCaseById = (id: string) => cases.find((c) => c.id === id);
+  const getCategoryById = (id: string) => categories.find((c) => c.id === id);
+
   const handleExport = () => {
     const rows = [
-      ["Dato", "Sak", "Kategori", "Timer", "Minutter", "Beskrivelse"],
+      ["Dato", "Fra", "Til", "Sak", "Kategori", "Timer", "Beskrivelse"],
       ...filtered.map((e) => {
-        const c = cases.find((x) => x.id === e.caseId);
-        const cat = categories.find((x) => x.id === c?.categoryId);
+        const c = getCaseById(e.caseId);
+        const cat = getCategoryById(c?.categoryId ?? "");
         return [
           format(e.date, "yyyy-MM-dd"),
+          e.startTime ?? "",
+          e.endTime ?? "",
           c?.title ?? "",
           cat?.name ?? "",
-          Math.floor(e.durationMinutes / 60),
-          e.durationMinutes % 60,
+          minutesToHours(e.durationMinutes),
           e.description,
         ];
       }),
@@ -131,148 +102,323 @@ export default function ReportsPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `timelogg-${format(from, "yyyyMMdd")}-${format(to, "yyyyMMdd")}.csv`;
+    a.download = `rapport-${format(start, "yyyyMMdd")}-${format(end, "yyyyMMdd")}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-6 max-w-4xl mx-auto">
+      {/* Header */}
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Rapporter</h1>
-        <Button variant="outline" onClick={handleExport}>
-          <Download className="h-4 w-4 mr-1" />
+        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Rapporter</h1>
+        <Button variant="outline" onClick={handleExport} size="sm">
+          <Download className="h-4 w-4 mr-1.5" />
           Eksporter CSV
         </Button>
       </div>
 
-      {/* Date filter */}
-      <div className="mb-6 flex items-center gap-3">
-        <span className="text-sm font-medium text-slate-600">Periode:</span>
-        <DatePickerButton label="Fra" value={from} onChange={setFrom} />
-        <span className="text-muted-foreground">→</span>
-        <DatePickerButton label="Til" value={to} onChange={setTo} />
-        <span className="ml-auto text-sm text-slate-500">
-          Totalt: <strong>{minutesToHours(totalMinutes)}</strong> ({filtered.length} entries)
-        </span>
+      {/* Period tabs */}
+      <div className="flex gap-1 mb-4 p-1 rounded-xl bg-slate-100 w-fit">
+        {(["dag", "uke", "måned", "år"] as Period[]).map((p) => (
+          <button
+            key={p}
+            onClick={() => setPeriod(p)}
+            className={cn(
+              "px-4 py-1.5 text-sm font-medium rounded-lg transition-all capitalize",
+              period === p
+                ? "bg-white text-slate-900 shadow-sm"
+                : "text-slate-500 hover:text-slate-700"
+            )}
+          >
+            {p.charAt(0).toUpperCase() + p.slice(1)}
+          </button>
+        ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-6 mb-6">
-        {/* Pie chart */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Timer per kategori</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {byCategory.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">Ingen data</p>
-            ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <PieChart>
-                  <Pie
-                    data={byCategory}
-                    dataKey="hours"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={90}
-                    label={(props) => `${props.name}: ${props.value}t`}
-                    labelLine={false}
-                  >
-                    {byCategory.map((entry, i) => (
-                      <Cell key={i} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(v) => [`${v}t`, "Timer"]} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Bar chart */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Timer per uke</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {byWeek.every((w) => w.timer === 0) ? (
-              <p className="text-center text-muted-foreground py-8">Ingen data</p>
-            ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={byWeek} margin={{ top: 4, right: 4, bottom: 4, left: -20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="week" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} unit="t" />
-                  <Tooltip formatter={(v) => [`${v}t`, "Timer"]} />
-                  <Bar dataKey="timer" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
+      {/* Navigator */}
+      <div className="flex items-center justify-between mb-6 rounded-xl border border-slate-200 bg-white px-4 py-3">
+        <button onClick={() => navigate(-1)} className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
+          <ChevronLeft className="h-5 w-5 text-slate-600" />
+        </button>
+        <div className="text-center">
+          <p className="text-sm font-semibold text-slate-800 capitalize">{periodLabel}</p>
+          <p className="text-xs text-slate-400">Totalt: {minutesToHours(totalMinutes)} · {filtered.length} poster</p>
+        </div>
+        <button onClick={() => navigate(1)} className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
+          <ChevronRight className="h-5 w-5 text-slate-600" />
+        </button>
       </div>
 
-      {/* Table per case */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Timer per sak</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {byCase.length === 0 ? (
-            <p className="text-center text-muted-foreground py-6">Ingen data i valgt periode</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="pb-2 font-medium">Sak</th>
-                  <th className="pb-2 font-medium">Kategori</th>
-                  <th className="pb-2 font-medium text-right">Timer</th>
-                  <th className="pb-2 font-medium text-right">%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {byCase.map((row) => (
-                  <tr key={row.caseId} className="border-b last:border-0">
-                    <td className="py-2.5 font-medium">{row.title}</td>
-                    <td className="py-2.5 text-muted-foreground">{row.categoryName}</td>
-                    <td className="py-2.5 text-right font-medium">{minutesToHours(row.minutes)}</td>
-                    <td className="py-2.5 text-right text-muted-foreground">
-                      {totalMinutes > 0 ? Math.round((row.minutes / totalMinutes) * 100) : 0}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan={2} className="pt-3 font-semibold">Totalt</td>
-                  <td className="pt-3 text-right font-semibold">{minutesToHours(totalMinutes)}</td>
-                  <td className="pt-3 text-right font-semibold">100%</td>
-                </tr>
-              </tfoot>
-            </table>
-          )}
-        </CardContent>
-      </Card>
+      {/* Content */}
+      {filtered.length === 0 ? (
+        <div className="text-center py-16 text-slate-400">
+          <p className="font-medium">Ingen timer registrert for denne perioden</p>
+        </div>
+      ) : (
+        <>
+          {period === "dag" && <DagView entries={filtered} getCaseById={getCaseById} getCategoryById={getCategoryById} />}
+          {period === "uke" && <UkeView entries={filtered} start={start} end={end} getCaseById={getCaseById} getCategoryById={getCategoryById} />}
+          {period === "måned" && <MånedView entries={filtered} start={start} end={end} getCaseById={getCaseById} getCategoryById={getCategoryById} />}
+          {period === "år" && <ÅrView entries={filtered} start={start} end={end} getCaseById={getCaseById} getCategoryById={getCategoryById} />}
+        </>
+      )}
     </div>
   );
 }
 
-function DatePickerButton({ label, value, onChange }: { label: string; value: Date; onChange: (d: Date) => void }) {
+// ── Dag-visning ──────────────────────────────────────────
+function DagView({ entries, getCaseById, getCategoryById }: {
+  entries: ReturnType<typeof useTimeEntries>["entries"];
+  getCaseById: (id: string) => ReturnType<typeof useCases>["cases"][0] | undefined;
+  getCategoryById: (id: string) => ReturnType<typeof useCategories>["categories"][0] | undefined;
+}) {
+  const sorted = [...entries].sort((a, b) => {
+    const at = a.startTime ?? "00:00";
+    const bt = b.startTime ?? "00:00";
+    return at.localeCompare(bt);
+  });
+  const total = entries.reduce((s, e) => s + e.durationMinutes, 0);
+
   return (
-    <Popover>
-      <PopoverTrigger className={cn(buttonVariants({ variant: "outline" }), "gap-2 text-sm")}>
-        <CalendarIcon className="h-4 w-4" />
-        {format(value, "d. MMM yyyy", { locale: nb })}
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0">
-        <Calendar
-          mode="single"
-          selected={value}
-          onSelect={(d) => d && onChange(d)}
-          locale={nb}
-        />
-      </PopoverContent>
-    </Popover>
+    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+      <div className="divide-y divide-slate-100">
+        {sorted.map((e) => {
+          const c = getCaseById(e.caseId);
+          const cat = c ? getCategoryById(c.categoryId) : undefined;
+          return (
+            <div key={e.id} className="flex items-center gap-4 px-5 py-4">
+              <div className="w-24 shrink-0 text-center">
+                {e.startTime && e.endTime ? (
+                  <>
+                    <p className="text-sm font-bold text-slate-800">{e.startTime}</p>
+                    <p className="text-xs text-slate-400">{e.endTime}</p>
+                  </>
+                ) : (
+                  <p className="text-sm font-bold text-slate-600">{minutesToHours(e.durationMinutes)}</p>
+                )}
+              </div>
+              <div className="w-px h-10 bg-slate-200 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-slate-800 truncate">{c?.title ?? "Ukjent sak"}</span>
+                  <CategoryBadge category={cat} small />
+                </div>
+                {e.description && <p className="text-xs text-slate-400 truncate mt-0.5">{e.description}</p>}
+              </div>
+              {e.startTime && e.endTime && (
+                <span className="shrink-0 text-sm font-bold text-slate-600">{minutesToHours(e.durationMinutes)}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="border-t border-slate-200 bg-slate-50 px-5 py-3 flex justify-between">
+        <span className="text-sm font-semibold text-slate-600">Totalt</span>
+        <span className="text-sm font-bold text-slate-900">{minutesToHours(total)}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Uke-visning ──────────────────────────────────────────
+function UkeView({ entries, start, end, getCaseById, getCategoryById }: {
+  entries: ReturnType<typeof useTimeEntries>["entries"];
+  start: Date; end: Date;
+  getCaseById: (id: string) => ReturnType<typeof useCases>["cases"][0] | undefined;
+  getCategoryById: (id: string) => ReturnType<typeof useCategories>["categories"][0] | undefined;
+}) {
+  const days = eachDayOfInterval({ start, end });
+  const total = entries.reduce((s, e) => s + e.durationMinutes, 0);
+
+  return (
+    <div className="space-y-4">
+      {days.map((day) => {
+        const dayEntries = entries
+          .filter((e) => isSameDay(e.date, day))
+          .sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""));
+        if (dayEntries.length === 0) return null;
+        const dayTotal = dayEntries.reduce((s, e) => s + e.durationMinutes, 0);
+        return (
+          <div key={day.toISOString()}>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                {format(day, "EEEE d. MMMM", { locale: nb })}
+              </h3>
+              <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
+                {minutesToHours(dayTotal)}
+              </span>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden divide-y divide-slate-100">
+              {dayEntries.map((e) => {
+                const c = getCaseById(e.caseId);
+                const cat = c ? getCategoryById(c.categoryId) : undefined;
+                return (
+                  <div key={e.id} className="flex items-center gap-4 px-4 py-3">
+                    <div className="w-20 shrink-0 text-center">
+                      {e.startTime && e.endTime ? (
+                        <>
+                          <p className="text-sm font-bold text-slate-800">{e.startTime}</p>
+                          <p className="text-xs text-slate-400">{e.endTime}</p>
+                        </>
+                      ) : (
+                        <p className="text-sm font-bold text-slate-600">{minutesToHours(e.durationMinutes)}</p>
+                      )}
+                    </div>
+                    <div className="w-px h-9 bg-slate-200 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-slate-800 truncate">{c?.title ?? "Ukjent sak"}</span>
+                        <CategoryBadge category={cat} small />
+                      </div>
+                      {e.description && <p className="text-xs text-slate-400 truncate">{e.description}</p>}
+                    </div>
+                    {e.startTime && e.endTime && (
+                      <span className="shrink-0 text-sm font-semibold text-slate-600">{minutesToHours(e.durationMinutes)}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-5 py-3 flex justify-between">
+        <span className="text-sm font-semibold text-indigo-700">Totalt for uken</span>
+        <span className="text-sm font-bold text-indigo-900">{minutesToHours(total)}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Måned-visning ─────────────────────────────────────────
+function MånedView({ entries, start, end, getCaseById, getCategoryById }: {
+  entries: ReturnType<typeof useTimeEntries>["entries"];
+  start: Date; end: Date;
+  getCaseById: (id: string) => ReturnType<typeof useCases>["cases"][0] | undefined;
+  getCategoryById: (id: string) => ReturnType<typeof useCategories>["categories"][0] | undefined;
+}) {
+  const days = eachDayOfInterval({ start, end }).filter((day) =>
+    entries.some((e) => isSameDay(e.date, day))
+  );
+  const total = entries.reduce((s, e) => s + e.durationMinutes, 0);
+
+  // Sak-sammendrag
+  const byCase: Record<string, number> = {};
+  entries.forEach((e) => { byCase[e.caseId] = (byCase[e.caseId] ?? 0) + e.durationMinutes; });
+  const caseSummary = Object.entries(byCase)
+    .map(([id, min]) => ({ id, title: getCaseById(id)?.title ?? "Ukjent", min }))
+    .sort((a, b) => b.min - a.min);
+
+  return (
+    <div className="space-y-6">
+      {/* Dag-for-dag */}
+      <div className="space-y-2">
+        {days.map((day) => {
+          const dayEntries = entries
+            .filter((e) => isSameDay(e.date, day))
+            .sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""));
+          const dayTotal = dayEntries.reduce((s, e) => s + e.durationMinutes, 0);
+          return (
+            <div key={day.toISOString()} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+                <span className="text-xs font-semibold text-slate-500 capitalize">
+                  {format(day, "EEEE d. MMMM", { locale: nb })}
+                </span>
+                <span className="text-xs font-bold text-slate-600">{minutesToHours(dayTotal)}</span>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {dayEntries.map((e) => {
+                  const c = getCaseById(e.caseId);
+                  const cat = c ? getCategoryById(c.categoryId) : undefined;
+                  return (
+                    <div key={e.id} className="flex items-center gap-3 px-4 py-2.5">
+                      {e.startTime && e.endTime && (
+                        <span className="text-xs text-slate-400 shrink-0 w-24">{e.startTime} – {e.endTime}</span>
+                      )}
+                      <span className="text-sm font-medium text-slate-800 truncate flex-1">{c?.title ?? "Ukjent sak"}</span>
+                      <CategoryBadge category={cat} small />
+                      <span className="text-sm font-semibold text-slate-600 shrink-0">{minutesToHours(e.durationMinutes)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Oppsummering per sak */}
+      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
+          <p className="text-sm font-semibold text-slate-700">Oppsummering per sak</p>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {caseSummary.map((row) => (
+            <div key={row.id} className="flex items-center justify-between px-5 py-3">
+              <span className="text-sm text-slate-700">{row.title}</span>
+              <span className="text-sm font-semibold text-slate-800">{minutesToHours(row.min)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="px-5 py-3 border-t border-slate-200 bg-indigo-50 flex justify-between">
+          <span className="text-sm font-semibold text-indigo-700">Totalt for måneden</span>
+          <span className="text-sm font-bold text-indigo-900">{minutesToHours(total)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── År-visning ────────────────────────────────────────────
+function ÅrView({ entries, start, end, getCaseById, getCategoryById }: {
+  entries: ReturnType<typeof useTimeEntries>["entries"];
+  start: Date; end: Date;
+  getCaseById: (id: string) => ReturnType<typeof useCases>["cases"][0] | undefined;
+  getCategoryById: (id: string) => ReturnType<typeof useCategories>["categories"][0] | undefined;
+}) {
+  const months = eachMonthOfInterval({ start, end });
+  const total = entries.reduce((s, e) => s + e.durationMinutes, 0);
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden divide-y divide-slate-100">
+        {months.map((month) => {
+          const monthEntries = entries.filter((e) =>
+            isWithinInterval(e.date, { start: startOfMonth(month), end: endOfMonth(month) })
+          );
+          const monthTotal = monthEntries.reduce((s, e) => s + e.durationMinutes, 0);
+          if (monthTotal === 0) return null;
+
+          const caseMap: Record<string, number> = {};
+          monthEntries.forEach((e) => { caseMap[e.caseId] = (caseMap[e.caseId] ?? 0) + e.durationMinutes; });
+
+          return (
+            <div key={month.toISOString()} className="px-5 py-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-slate-800 capitalize">
+                  {format(month, "MMMM", { locale: nb })}
+                </h3>
+                <span className="text-sm font-bold text-slate-700">{minutesToHours(monthTotal)}</span>
+              </div>
+              <div className="space-y-1">
+                {Object.entries(caseMap)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([id, min]) => (
+                    <div key={id} className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500">{getCaseById(id)?.title ?? "Ukjent"}</span>
+                      <span className="text-xs font-medium text-slate-600">{minutesToHours(min)}</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-5 py-3 flex justify-between">
+        <span className="text-sm font-semibold text-indigo-700">Totalt for året</span>
+        <span className="text-sm font-bold text-indigo-900">{minutesToHours(total)}</span>
+      </div>
+    </div>
   );
 }

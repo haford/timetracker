@@ -17,12 +17,17 @@ import {
   TrendingUp,
   CalendarDays,
   ChevronRight,
+  AlertTriangle,
+  Bell,
 } from "lucide-react";
 import {
   startOfDay,
   startOfWeek,
   startOfMonth,
   isAfter,
+  isBefore,
+  addDays,
+  differenceInDays,
   format,
 } from "date-fns";
 import { nb } from "date-fns/locale";
@@ -61,6 +66,14 @@ export default function DashboardPage() {
 
   const activeCases = cases.filter((c) => c.status === "påbegynt");
   const recentEntries = entries.slice(0, 5);
+
+  const deadlineAlerts = useMemo(() => {
+    return cases
+      .filter((c) => c.deadline && c.status !== "avsluttet")
+      .map((c) => ({ ...c, daysLeft: differenceInDays(c.deadline!, startOfDay(now)) }))
+      .filter((c) => c.daysLeft <= 7)
+      .sort((a, b) => a.daysLeft - b.daysLeft);
+  }, [cases, now]);
 
   const getCategoryById = (id: string) => categories.find((c) => c.id === id);
   const getCaseById = (id: string) => cases.find((c) => c.id === id);
@@ -116,6 +129,46 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Fristadvarsler */}
+      {deadlineAlerts.length > 0 && (
+        <div className="mb-6 space-y-2">
+          {deadlineAlerts.map((c) => {
+            const urgent = c.daysLeft <= 2;
+            return (
+              <div
+                key={c.id}
+                className={cn(
+                  "flex items-center gap-3 rounded-xl px-4 py-3 border",
+                  urgent
+                    ? "bg-red-50 border-red-200"
+                    : "bg-amber-50 border-amber-200"
+                )}
+              >
+                {urgent ? (
+                  <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+                ) : (
+                  <Bell className="h-4 w-4 text-amber-500 shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <span className={cn("text-sm font-semibold truncate", urgent ? "text-red-800" : "text-amber-800")}>
+                    {c.title}
+                  </span>
+                  <span className={cn("ml-2 text-xs", urgent ? "text-red-600" : "text-amber-600")}>
+                    — frist {format(c.deadline!, "d. MMMM", { locale: nb })}
+                  </span>
+                </div>
+                <span className={cn(
+                  "shrink-0 text-xs font-bold px-2.5 py-1 rounded-full",
+                  urgent ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+                )}>
+                  {c.daysLeft === 0 ? "I dag!" : c.daysLeft === 1 ? "I morgen!" : `${c.daysLeft} dager`}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-6">
         {/* Active Cases */}
