@@ -168,6 +168,9 @@ export default function CasesPage() {
                         {c.description && (
                           <span className="truncate max-w-xs">{c.description}</span>
                         )}
+                        {c.startDate && (
+                          <span>Opprettet: {format(c.startDate, "d. MMM yyyy", { locale: nb })}</span>
+                        )}
                         {c.deadline && (
                           <span>Frist: {format(c.deadline, "d. MMM yyyy", { locale: nb })}</span>
                         )}

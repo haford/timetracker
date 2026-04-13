@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function EditTimerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { user } = useAuth();
-  const { cases } = useCases(user?.uid);
+  const { cases, loading: casesLoading } = useCases(user?.uid);
   const [entry, setEntry] = useState<TimeEntry | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -25,7 +25,7 @@ export default function EditTimerPage({ params }: { params: Promise<{ id: string
     return unsub;
   }, [user, id]);
 
-  if (loading || !user) {
+  if (loading || casesLoading || !user) {
     return (
       <div className="p-6 max-w-2xl mx-auto space-y-4">
         <Skeleton className="h-8 w-48" />

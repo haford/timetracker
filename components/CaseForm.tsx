@@ -42,6 +42,7 @@ interface CaseFormProps {
 
 export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
   const router = useRouter();
+  const [startDate, setStartDate] = useState<Date | undefined>(editCase?.startDate);
   const [deadline, setDeadline] = useState<Date | undefined>(editCase?.deadline);
   const [saving, setSaving] = useState(false);
 
@@ -62,10 +63,10 @@ export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
     setSaving(true);
     try {
       if (editCase) {
-        await updateCase(userId, editCase.id, { ...data, deadline });
+        await updateCase(userId, editCase.id, { ...data, startDate, deadline });
         toast.success("Sak oppdatert");
       } else {
-        await addCase(userId, { ...data, deadline });
+        await addCase(userId, { ...data, startDate, deadline });
         toast.success("Sak opprettet");
       }
       router.push("/cases");
@@ -122,6 +123,28 @@ export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Sak opprettet</Label>
+        <Popover>
+          <PopoverTrigger
+            className={cn(buttonVariants({ variant: "outline" }), "w-full justify-start text-left font-normal", !startDate && "text-muted-foreground")}
+          >
+            <CalendarIcon className="mr-2 h-4 w-4" />
+            {startDate ? format(startDate, "d. MMMM yyyy", { locale: nb }) : "Velg dato"}
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0">
+            <Calendar mode="single" selected={startDate} onSelect={setStartDate} locale={nb} />
+            {startDate && (
+              <div className="p-2 border-t">
+                <Button variant="ghost" size="sm" className="w-full" onClick={() => setStartDate(undefined)}>
+                  Fjern dato
+                </Button>
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
       </div>
 
       <div className="space-y-1.5">

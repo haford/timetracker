@@ -75,6 +75,7 @@ const caseFromDoc = (d: { id: string; data: () => Record<string, unknown> }): Ca
     status: data.status as CaseStatus,
     createdAt: toDate(data.createdAt as Timestamp),
     updatedAt: toDate(data.updatedAt as Timestamp),
+    startDate: data.startDate ? toDate(data.startDate as Timestamp) : undefined,
     deadline: data.deadline ? toDate(data.deadline as Timestamp) : undefined,
   };
 };
@@ -94,6 +95,7 @@ export const addCase = (
   const now = Timestamp.now();
   return addDoc(userCol(userId, "cases"), {
     ...data,
+    startDate: data.startDate ? Timestamp.fromDate(data.startDate) : null,
     deadline: data.deadline ? Timestamp.fromDate(data.deadline) : null,
     createdAt: now,
     updatedAt: now,
@@ -107,6 +109,7 @@ export const updateCase = (
 ) =>
   updateDoc(doc(getFirebaseDb(), "users", userId, "cases", caseId), {
     ...data,
+    startDate: data.startDate ? Timestamp.fromDate(data.startDate) : null,
     deadline: data.deadline ? Timestamp.fromDate(data.deadline) : null,
     updatedAt: Timestamp.now(),
   });

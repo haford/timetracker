@@ -14,6 +14,7 @@ export interface Case {
   status: CaseStatus;
   createdAt: Date;
   updatedAt: Date;
+  startDate?: Date;
   deadline?: Date;
 }
 
