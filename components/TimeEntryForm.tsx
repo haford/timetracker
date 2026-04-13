@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,16 +10,9 @@ import type { Case, TimeEntry } from "@/lib/types";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, ArrowRight, Clock } from "lucide-react";
+import { CalendarIcon, ArrowRight, Clock, ChevronDown, Search, Check } from "lucide-react";
 import { format } from "date-fns";
 import { nb } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -95,6 +88,21 @@ export function TimeEntryForm({ userId, cases, initialCaseId, editEntry }: TimeE
   const startTime = watch("startTime");
   const endTime = watch("endTime");
 
+  const [caseOpen, setCaseOpen] = useState(false);
+  const [caseQuery, setCaseQuery] = useState("");
+
+  const filteredCases = useMemo(() => {
+    if (!caseQuery.trim()) return cases;
+    const q = caseQuery.toLowerCase();
+    return cases.filter(
+      (c) =>
+        c.title.toLowerCase().includes(q) ||
+        (c.description || "").toLowerCase().includes(q)
+    );
+  }, [cases, caseQuery]);
+
+  const selectedCase = cases.find((c) => c.id === caseId);
+
   const durationMin =
     startTime && endTime && timeToMinutes(endTime) > timeToMinutes(startTime)
       ? timeToMinutes(endTime) - timeToMinutes(startTime)
@@ -138,22 +146,75 @@ export function TimeEntryForm({ userId, cases, initialCaseId, editEntry }: TimeE
       {/* Sak */}
       <div className="space-y-2">
         <Label className="text-sm font-medium text-slate-700">Sak *</Label>
-        <Select
-          value={caseId || null}
-          onValueChange={(v) => v && setValue("caseId", v)}
-          items={cases.map((c) => ({ value: c.id, label: c.title }))}
+        <Popover
+          open={caseOpen}
+          onOpenChange={(o) => {
+            setCaseOpen(o);
+            if (!o) setCaseQuery("");
+          }}
         >
-          <SelectTrigger className="h-11">
-            <SelectValue placeholder="Velg sak" />
-          </SelectTrigger>
-          <SelectContent>
-            {cases.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.title}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          <PopoverTrigger
+            className={cn(
+              buttonVariants({ variant: "outline" }),
+              "w-full h-11 justify-between text-left font-normal",
+              !caseId && "text-muted-foreground"
+            )}
+          >
+            <span className="truncate">
+              {selectedCase ? selectedCase.title : "Velg sak"}
+            </span>
+            <ChevronDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
+          </PopoverTrigger>
+          <PopoverContent
+            className="w-(--anchor-width) min-w-72 p-0 overflow-hidden"
+            align="start"
+          >
+            {/* Søkefelt */}
+            <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2.5">
+              <Search className="h-4 w-4 text-slate-400 shrink-0" />
+              <input
+                type="text"
+                value={caseQuery}
+                onChange={(e) => setCaseQuery(e.target.value)}
+                placeholder="Søk etter sak..."
+                className="flex-1 text-sm bg-transparent outline-none placeholder:text-slate-400"
+                autoFocus
+              />
+            </div>
+            {/* Saksliste */}
+            <div className="max-h-64 overflow-y-auto">
+              {filteredCases.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-4">Ingen saker funnet</p>
+              ) : (
+                filteredCases.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={cn(
+                      "w-full text-left px-3 py-2.5 hover:bg-slate-50 transition-colors flex items-start gap-2",
+                      caseId === c.id && "bg-indigo-50"
+                    )}
+                    onClick={() => {
+                      setValue("caseId", c.id, { shouldValidate: true });
+                      setCaseOpen(false);
+                      setCaseQuery("");
+                    }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800 truncate">{c.title}</p>
+                      {c.description && (
+                        <p className="text-xs text-slate-400 mt-0.5 truncate">{c.description}</p>
+                      )}
+                    </div>
+                    {caseId === c.id && (
+                      <Check className="h-4 w-4 text-indigo-500 shrink-0 mt-0.5" />
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
         {errors.caseId && <p className="text-xs text-red-500">{errors.caseId.message}</p>}
       </div>
 
