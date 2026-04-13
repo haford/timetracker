@@ -30,6 +30,12 @@ const schema = z.object({
   description: z.string(),
   categoryId: z.string(),
   status: z.enum(["ikke_startet", "påbegynt", "pause", "avsluttet"] as const),
+  contactName: z.string(),
+  contactInfo: z.string(),
+  notes: z.string(),
+  isPaid: z.boolean(),
+  honorar: z.number().min(0).optional(),
+  honorarPaid: z.boolean(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -53,20 +59,34 @@ export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
       description: editCase?.description ?? "",
       categoryId: editCase?.categoryId ?? "",
       status: editCase?.status ?? "ikke_startet",
+      contactName: editCase?.contactName ?? "",
+      contactInfo: editCase?.contactInfo ?? "",
+      notes: editCase?.notes ?? "",
+      isPaid: editCase?.isPaid ?? false,
+      honorar: editCase?.honorar,
+      honorarPaid: editCase?.honorarPaid ?? false,
     },
   });
 
   const status = watch("status");
   const categoryId = watch("categoryId");
+  const isPaid = watch("isPaid");
 
   const onSubmit = async (data: FormData) => {
     setSaving(true);
     try {
+      const payload = {
+        ...data,
+        startDate,
+        deadline,
+        honorar: data.isPaid ? data.honorar : undefined,
+        honorarPaid: data.isPaid ? data.honorarPaid : false,
+      };
       if (editCase) {
-        await updateCase(userId, editCase.id, { ...data, startDate, deadline });
+        await updateCase(userId, editCase.id, payload);
         toast.success("Sak oppdatert");
       } else {
-        await addCase(userId, { ...data, startDate, deadline });
+        await addCase(userId, payload);
         toast.success("Sak opprettet");
       }
       router.push("/cases");
@@ -79,17 +99,20 @@ export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 max-w-lg">
+      {/* Tittel */}
       <div className="space-y-1.5">
         <Label htmlFor="title">Tittel *</Label>
         <Input id="title" placeholder="Sakstittel" {...register("title")} />
         {errors.title && <p className="text-xs text-red-600">{errors.title.message}</p>}
       </div>
 
+      {/* Beskrivelse */}
       <div className="space-y-1.5">
         <Label htmlFor="description">Beskrivelse</Label>
         <Input id="description" placeholder="Valgfri beskrivelse" {...register("description")} />
       </div>
 
+      {/* Status + Kategori */}
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <Label>Status</Label>
@@ -99,14 +122,11 @@ export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
             </SelectTrigger>
             <SelectContent>
               {(Object.keys(STATUS_LABELS) as CaseStatus[]).map((s) => (
-                <SelectItem key={s} value={s}>
-                  {STATUS_LABELS[s]}
-                </SelectItem>
+                <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
-
         <div className="space-y-1.5">
           <Label>Kategori</Label>
           <Select value={categoryId} onValueChange={(v) => setValue("categoryId", v ?? "")}>
@@ -116,62 +136,109 @@ export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
             <SelectContent>
               <SelectItem value="">Ingen kategori</SelectItem>
               {categories.map((cat) => (
-                <SelectItem key={cat.id} value={cat.id}>
-                  {cat.name}
-                </SelectItem>
+                <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
       </div>
 
+      {/* Sak opprettet + Frist */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label>Sak opprettet</Label>
+          <Popover>
+            <PopoverTrigger className={cn(buttonVariants({ variant: "outline" }), "w-full justify-start text-left font-normal", !startDate && "text-muted-foreground")}>
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {startDate ? format(startDate, "d. MMM yyyy", { locale: nb }) : "Velg dato"}
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0">
+              <Calendar mode="single" selected={startDate} onSelect={setStartDate} locale={nb} />
+              {startDate && (
+                <div className="p-2 border-t">
+                  <Button variant="ghost" size="sm" className="w-full" onClick={() => setStartDate(undefined)}>Fjern</Button>
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Frist</Label>
+          <Popover>
+            <PopoverTrigger className={cn(buttonVariants({ variant: "outline" }), "w-full justify-start text-left font-normal", !deadline && "text-muted-foreground")}>
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {deadline ? format(deadline, "d. MMM yyyy", { locale: nb }) : "Velg dato"}
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0">
+              <Calendar mode="single" selected={deadline} onSelect={setDeadline} locale={nb} />
+              {deadline && (
+                <div className="p-2 border-t">
+                  <Button variant="ghost" size="sm" className="w-full" onClick={() => setDeadline(undefined)}>Fjern</Button>
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
+        </div>
+      </div>
+
+      {/* Kontaktperson */}
       <div className="space-y-1.5">
-        <Label>Sak opprettet</Label>
-        <Popover>
-          <PopoverTrigger
-            className={cn(buttonVariants({ variant: "outline" }), "w-full justify-start text-left font-normal", !startDate && "text-muted-foreground")}
-          >
-            <CalendarIcon className="mr-2 h-4 w-4" />
-            {startDate ? format(startDate, "d. MMMM yyyy", { locale: nb }) : "Velg dato"}
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0">
-            <Calendar mode="single" selected={startDate} onSelect={setStartDate} locale={nb} />
-            {startDate && (
-              <div className="p-2 border-t">
-                <Button variant="ghost" size="sm" className="w-full" onClick={() => setStartDate(undefined)}>
-                  Fjern dato
-                </Button>
-              </div>
-            )}
-          </PopoverContent>
-        </Popover>
+        <Label htmlFor="contactName">Kontaktperson</Label>
+        <Input id="contactName" placeholder="Navn" {...register("contactName")} />
       </div>
 
       <div className="space-y-1.5">
-        <Label>Frist (valgfri)</Label>
-        <Popover>
-          <PopoverTrigger
-            className={cn(buttonVariants({ variant: "outline" }), "w-full justify-start text-left font-normal", !deadline && "text-muted-foreground")}
-          >
-            <CalendarIcon className="mr-2 h-4 w-4" />
-            {deadline ? format(deadline, "d. MMMM yyyy", { locale: nb }) : "Velg dato"}
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0">
-            <Calendar
-              mode="single"
-              selected={deadline}
-              onSelect={setDeadline}
-              locale={nb}
-            />
-            {deadline && (
-              <div className="p-2 border-t">
-                <Button variant="ghost" size="sm" className="w-full" onClick={() => setDeadline(undefined)}>
-                  Fjern frist
-                </Button>
-              </div>
-            )}
-          </PopoverContent>
-        </Popover>
+        <Label htmlFor="contactInfo">Kontaktinfo</Label>
+        <Input id="contactInfo" placeholder="Telefon, e-post el." {...register("contactInfo")} />
+      </div>
+
+      {/* Saksmerknader */}
+      <div className="space-y-1.5">
+        <Label htmlFor="notes">Saksmerknader</Label>
+        <textarea
+          id="notes"
+          rows={3}
+          placeholder="Notater og merknader..."
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-none"
+          {...register("notes")}
+        />
+      </div>
+
+      {/* Honorar */}
+      <div className="rounded-xl border border-slate-200 p-4 space-y-4">
+        <div className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            id="isPaid"
+            className="h-4 w-4 rounded border-slate-300 accent-indigo-600"
+            {...register("isPaid")}
+          />
+          <Label htmlFor="isPaid" className="cursor-pointer font-medium">Betalt sak</Label>
+        </div>
+
+        {isPaid && (
+          <>
+            <div className="space-y-1.5">
+              <Label htmlFor="honorar">Honorar (kr)</Label>
+              <Input
+                id="honorar"
+                type="number"
+                min={0}
+                placeholder="0"
+                {...register("honorar", { valueAsNumber: true })}
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="honorarPaid"
+                className="h-4 w-4 rounded border-slate-300 accent-indigo-600"
+                {...register("honorarPaid")}
+              />
+              <Label htmlFor="honorarPaid" className="cursor-pointer">Honorar utbetalt</Label>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="flex gap-3 pt-2">

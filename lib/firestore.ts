@@ -77,6 +77,12 @@ const caseFromDoc = (d: { id: string; data: () => Record<string, unknown> }): Ca
     updatedAt: toDate(data.updatedAt as Timestamp),
     startDate: data.startDate ? toDate(data.startDate as Timestamp) : undefined,
     deadline: data.deadline ? toDate(data.deadline as Timestamp) : undefined,
+    contactName: (data.contactName as string) || undefined,
+    contactInfo: (data.contactInfo as string) || undefined,
+    notes: (data.notes as string) || undefined,
+    isPaid: (data.isPaid as boolean) ?? false,
+    honorar: (data.honorar as number) || undefined,
+    honorarPaid: (data.honorarPaid as boolean) ?? false,
   };
 };
 

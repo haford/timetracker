@@ -16,6 +16,12 @@ export interface Case {
   updatedAt: Date;
   startDate?: Date;
   deadline?: Date;
+  contactName?: string;
+  contactInfo?: string;
+  notes?: string;
+  isPaid?: boolean;
+  honorar?: number;
+  honorarPaid?: boolean;
 }
 
 export interface TimeEntry {
