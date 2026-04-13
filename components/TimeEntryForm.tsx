@@ -138,7 +138,11 @@ export function TimeEntryForm({ userId, cases, initialCaseId, editEntry }: TimeE
       {/* Sak */}
       <div className="space-y-2">
         <Label className="text-sm font-medium text-slate-700">Sak *</Label>
-        <Select value={caseId} onValueChange={(v) => v && setValue("caseId", v)}>
+        <Select
+          value={caseId || null}
+          onValueChange={(v) => v && setValue("caseId", v)}
+          items={cases.map((c) => ({ value: c.id, label: c.title }))}
+        >
           <SelectTrigger className="h-11">
             <SelectValue placeholder="Velg sak" />
           </SelectTrigger>

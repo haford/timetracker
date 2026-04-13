@@ -123,7 +123,11 @@ export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <Label>Status</Label>
-          <Select value={status} onValueChange={(v) => v && setValue("status", v as CaseStatus)}>
+          <Select
+            value={status}
+            onValueChange={(v) => v && setValue("status", v as CaseStatus)}
+            items={(Object.keys(STATUS_LABELS) as CaseStatus[]).map((s) => ({ value: s, label: STATUS_LABELS[s] }))}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -136,12 +140,16 @@ export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
         </div>
         <div className="space-y-1.5">
           <Label>Kategori</Label>
-          <Select value={categoryId} onValueChange={(v) => setValue("categoryId", v ?? "")}>
+          <Select
+            value={categoryId || null}
+            onValueChange={(v) => setValue("categoryId", v ?? "")}
+            items={[{ value: null, label: "Ingen kategori" }, ...categories.map((c) => ({ value: c.id, label: c.name }))]}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Velg kategori" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Ingen kategori</SelectItem>
+              <SelectItem>Ingen kategori</SelectItem>
               {categories.map((cat) => (
                 <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
               ))}
