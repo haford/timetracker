@@ -146,35 +146,31 @@ export default function CasesPage() {
             const totalMin = totalMinutesForCase(c.id);
             return (
               <Card key={c.id} className="hover:shadow-sm transition-shadow">
-                <CardContent className="p-4">
+                <CardContent className="py-2 px-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Link
-                          href={`/cases/${c.id}`}
-                          className="font-semibold text-slate-900 hover:underline truncate"
-                        >
-                          {c.title}
-                        </Link>
-                        <Badge
-                          className={`shrink-0 text-xs ${STATUS_COLORS[c.status]}`}
-                          variant="outline"
-                        >
-                          {STATUS_LABELS[c.status]}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        <CategoryBadge category={cat} small />
-                        {c.description && (
-                          <span className="truncate max-w-xs">{c.description}</span>
-                        )}
-                        {c.startDate && (
-                          <span>Opprettet: {format(c.startDate, "d. MMM yyyy", { locale: nb })}</span>
-                        )}
-                        {c.deadline && (
-                          <span>Frist: {format(c.deadline, "d. MMM yyyy", { locale: nb })}</span>
-                        )}
-                      </div>
+                    <div className="flex-1 min-w-0 flex items-center gap-2">
+                      <Link
+                        href={`/cases/${c.id}`}
+                        className="font-medium text-slate-900 hover:underline truncate shrink-0"
+                      >
+                        {c.title}
+                      </Link>
+                      <Badge
+                        className={`shrink-0 text-xs ${STATUS_COLORS[c.status]}`}
+                        variant="outline"
+                      >
+                        {STATUS_LABELS[c.status]}
+                      </Badge>
+                      <CategoryBadge category={cat} small />
+                      {c.description && (
+                        <span className="text-xs text-muted-foreground truncate">{c.description}</span>
+                      )}
+                      {c.startDate && (
+                        <span className="text-xs text-muted-foreground shrink-0">{format(c.startDate, "d. MMM yyyy", { locale: nb })}</span>
+                      )}
+                      {c.deadline && (
+                        <span className="text-xs text-muted-foreground shrink-0">Frist: {format(c.deadline, "d. MMM yyyy", { locale: nb })}</span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       <div className="flex items-center gap-1 text-sm text-slate-600">
