@@ -75,18 +75,25 @@ export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
   const onSubmit = async (data: FormData) => {
     setSaving(true);
     try {
-      const payload = {
-        ...data,
-        startDate,
-        deadline,
-        honorar: data.isPaid ? data.honorar : undefined,
-        honorarPaid: data.isPaid ? data.honorarPaid : false,
+      const payload: Record<string, unknown> = {
+        title: data.title,
+        description: data.description,
+        categoryId: data.categoryId,
+        status: data.status,
+        contactName: data.contactName || "",
+        contactInfo: data.contactInfo || "",
+        notes: data.notes || "",
+        isPaid: data.isPaid,
+        honorarPaid: data.isPaid ? (data.honorarPaid ?? false) : false,
       };
+      if (startDate) payload.startDate = startDate;
+      if (deadline) payload.deadline = deadline;
+      if (data.isPaid && data.honorar) payload.honorar = data.honorar;
       if (editCase) {
-        await updateCase(userId, editCase.id, payload);
+        await updateCase(userId, editCase.id, payload as Parameters<typeof updateCase>[2]);
         toast.success("Sak oppdatert");
       } else {
-        await addCase(userId, payload);
+        await addCase(userId, payload as Parameters<typeof addCase>[1]);
         toast.success("Sak opprettet");
       }
       router.push("/cases");
