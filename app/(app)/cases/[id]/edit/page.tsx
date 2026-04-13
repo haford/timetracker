@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function EditCasePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { user } = useAuth();
-  const { categories } = useCategories(user?.uid);
+  const { categories, loading: catsLoading } = useCategories(user?.uid);
   const [caseData, setCaseData] = useState<Case | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -23,7 +23,7 @@ export default function EditCasePage({ params }: { params: Promise<{ id: string 
     });
   }, [user, id]);
 
-  if (loading || !user) {
+  if (loading || catsLoading || !user) {
     return (
       <div className="p-6 max-w-2xl mx-auto space-y-4">
         <Skeleton className="h-8 w-48" />

@@ -6,9 +6,9 @@ import { CaseForm } from "@/components/CaseForm";
 
 export default function NewCasePage() {
   const { user } = useAuth();
-  const { categories } = useCategories(user?.uid);
+  const { categories, loading } = useCategories(user?.uid);
 
-  if (!user) return null;
+  if (!user || loading) return null;
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
