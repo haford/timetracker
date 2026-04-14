@@ -126,47 +126,53 @@ export default function TimerPage() {
                     return (
                       <div
                         key={e.id}
-                        className="flex items-center gap-4 px-4 py-3.5 hover:bg-slate-50 transition-colors"
+                        className="flex items-center hover:bg-slate-50 transition-colors"
                       >
-                        {/* Tidsrom */}
-                        <div className="shrink-0 text-center w-20">
-                          {e.startTime && e.endTime ? (
-                            <>
-                              <p className="text-sm font-semibold text-slate-800">{e.startTime}</p>
-                              <p className="text-xs text-slate-400">{e.endTime}</p>
-                            </>
-                          ) : (
-                            <p className="text-sm font-bold text-slate-700">
-                              {minutesToHours(e.durationMinutes)}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Divider */}
-                        <div className="w-px h-10 bg-slate-200 shrink-0" />
-
-                        {/* Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <span className="text-sm font-semibold text-slate-800 truncate">
-                              {c?.title ?? "Ukjent sak"}
-                            </span>
-                            <CategoryBadge category={cat} small />
+                        {/* Klikkbar sakslenke */}
+                        <Link
+                          href={`/cases/${e.caseId}`}
+                          className="flex flex-1 items-center gap-4 px-4 py-3.5 min-w-0"
+                        >
+                          {/* Tidsrom */}
+                          <div className="shrink-0 text-center w-20">
+                            {e.startTime && e.endTime ? (
+                              <>
+                                <p className="text-sm font-semibold text-slate-800">{e.startTime}</p>
+                                <p className="text-xs text-slate-400">{e.endTime}</p>
+                              </>
+                            ) : (
+                              <p className="text-sm font-bold text-slate-700">
+                                {minutesToHours(e.durationMinutes)}
+                              </p>
+                            )}
                           </div>
-                          {e.description && (
-                            <p className="text-xs text-slate-400 truncate">{e.description}</p>
-                          )}
-                        </div>
 
-                        {/* Varighet (når vi har fra/til) */}
-                        {e.startTime && e.endTime && (
-                          <span className="shrink-0 text-sm font-bold text-slate-600">
-                            {minutesToHours(e.durationMinutes)}
-                          </span>
-                        )}
+                          {/* Divider */}
+                          <div className="w-px h-10 bg-slate-200 shrink-0" />
+
+                          {/* Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="text-sm font-semibold text-slate-800 truncate">
+                                {c?.title ?? "Ukjent sak"}
+                              </span>
+                              <CategoryBadge category={cat} small />
+                            </div>
+                            {e.description && (
+                              <p className="text-xs text-slate-400 truncate">{e.description}</p>
+                            )}
+                          </div>
+
+                          {/* Varighet (når vi har fra/til) */}
+                          {e.startTime && e.endTime && (
+                            <span className="shrink-0 text-sm font-bold text-slate-600">
+                              {minutesToHours(e.durationMinutes)}
+                            </span>
+                          )}
+                        </Link>
 
                         {/* Actions */}
-                        <div className="flex gap-1 shrink-0">
+                        <div className="flex gap-1 shrink-0 pr-3">
                           <Link
                             href={`/timer/${e.id}/edit`}
                             className={cn(
