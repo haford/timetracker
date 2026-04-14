@@ -25,6 +25,7 @@ import {
 } from "date-fns";
 import { nb } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
 
 type Period = "dag" | "uke" | "måned" | "år";
 
@@ -173,6 +174,7 @@ function DagView({ entries, getCaseById, getCategoryById }: {
   getCaseById: (id: string) => ReturnType<typeof useCases>["cases"][0] | undefined;
   getCategoryById: (id: string) => ReturnType<typeof useCategories>["categories"][0] | undefined;
 }) {
+  const router = useRouter();
   const sorted = [...entries].sort((a, b) => {
     const at = a.startTime ?? "00:00";
     const bt = b.startTime ?? "00:00";
@@ -187,7 +189,7 @@ function DagView({ entries, getCaseById, getCategoryById }: {
           const c = getCaseById(e.caseId);
           const cat = c ? getCategoryById(c.categoryId) : undefined;
           return (
-            <div key={e.id} className="flex items-center gap-4 px-5 py-4">
+            <div key={e.id} onClick={() => router.push(`/cases/${e.caseId}`)} className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-slate-50 transition-colors">
               <div className="w-24 shrink-0 text-center">
                 {e.startTime && e.endTime ? (
                   <>
@@ -228,6 +230,7 @@ function UkeView({ entries, start, end, getCaseById, getCategoryById }: {
   getCaseById: (id: string) => ReturnType<typeof useCases>["cases"][0] | undefined;
   getCategoryById: (id: string) => ReturnType<typeof useCategories>["categories"][0] | undefined;
 }) {
+  const router = useRouter();
   const days = eachDayOfInterval({ start, end });
   const total = entries.reduce((s, e) => s + e.durationMinutes, 0);
 
@@ -254,7 +257,7 @@ function UkeView({ entries, start, end, getCaseById, getCategoryById }: {
                 const c = getCaseById(e.caseId);
                 const cat = c ? getCategoryById(c.categoryId) : undefined;
                 return (
-                  <div key={e.id} className="flex items-center gap-4 px-4 py-3">
+                  <div key={e.id} onClick={() => router.push(`/cases/${e.caseId}`)} className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors">
                     <div className="w-20 shrink-0 text-center">
                       {e.startTime && e.endTime ? (
                         <>
@@ -298,6 +301,7 @@ function MånedView({ entries, start, end, getCaseById, getCategoryById }: {
   getCaseById: (id: string) => ReturnType<typeof useCases>["cases"][0] | undefined;
   getCategoryById: (id: string) => ReturnType<typeof useCategories>["categories"][0] | undefined;
 }) {
+  const router = useRouter();
   const days = eachDayOfInterval({ start, end }).filter((day) =>
     entries.some((e) => isSameDay(e.date, day))
   );
@@ -332,7 +336,7 @@ function MånedView({ entries, start, end, getCaseById, getCategoryById }: {
                   const c = getCaseById(e.caseId);
                   const cat = c ? getCategoryById(c.categoryId) : undefined;
                   return (
-                    <div key={e.id} className="flex items-center gap-3 px-4 py-2.5">
+                    <div key={e.id} onClick={() => router.push(`/cases/${e.caseId}`)} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-slate-50 transition-colors">
                       {e.startTime && e.endTime && (
                         <span className="text-xs text-slate-400 shrink-0 w-24">{e.startTime} – {e.endTime}</span>
                       )}
@@ -355,7 +359,7 @@ function MånedView({ entries, start, end, getCaseById, getCategoryById }: {
         </div>
         <div className="divide-y divide-slate-100">
           {caseSummary.map((row) => (
-            <div key={row.id} className="flex items-center justify-between px-5 py-3">
+            <div key={row.id} onClick={() => router.push(`/cases/${row.id}`)} className="flex items-center justify-between px-5 py-3 cursor-pointer hover:bg-slate-50 transition-colors">
               <span className="text-sm text-slate-700">{row.title}</span>
               <span className="text-sm font-semibold text-slate-800">{minutesToHours(row.min)}</span>
             </div>
@@ -377,6 +381,7 @@ function ÅrView({ entries, start, end, getCaseById, getCategoryById }: {
   getCaseById: (id: string) => ReturnType<typeof useCases>["cases"][0] | undefined;
   getCategoryById: (id: string) => ReturnType<typeof useCategories>["categories"][0] | undefined;
 }) {
+  const router = useRouter();
   const months = eachMonthOfInterval({ start, end });
   const total = entries.reduce((s, e) => s + e.durationMinutes, 0);
 
@@ -405,7 +410,7 @@ function ÅrView({ entries, start, end, getCaseById, getCategoryById }: {
                 {Object.entries(caseMap)
                   .sort((a, b) => b[1] - a[1])
                   .map(([id, min]) => (
-                    <div key={id} className="flex items-center justify-between">
+                    <div key={id} onClick={() => router.push(`/cases/${id}`)} className="flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors rounded px-1 -mx-1">
                       <span className="text-xs text-slate-500">{getCaseById(id)?.title ?? "Ukjent"}</span>
                       <span className="text-xs font-medium text-slate-600">{minutesToHours(min)}</span>
                     </div>
