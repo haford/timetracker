@@ -45,6 +45,7 @@ export default function ReportsPage() {
 
   const [period, setPeriod] = useState<Period>("dag");
   const [anchor, setAnchor] = useState(new Date());
+  const [view, setView] = useState<"poster" | "kategori">("poster");
 
   const { start, end } = useMemo(() => {
     if (period === "dag") return { start: startOfDay(anchor), end: endOfDay(anchor) };
@@ -119,22 +120,40 @@ export default function ReportsPage() {
         </Button>
       </div>
 
-      {/* Period tabs */}
-      <div className="flex gap-1 mb-4 p-1 rounded-xl bg-slate-100 w-fit">
-        {(["dag", "uke", "måned", "år"] as Period[]).map((p) => (
-          <button
-            key={p}
-            onClick={() => setPeriod(p)}
-            className={cn(
-              "px-4 py-1.5 text-sm font-medium rounded-lg transition-all capitalize",
-              period === p
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-500 hover:text-slate-700"
-            )}
-          >
-            {p.charAt(0).toUpperCase() + p.slice(1)}
-          </button>
-        ))}
+      {/* Period + view tabs */}
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <div className="flex gap-1 p-1 rounded-xl bg-slate-100 w-fit">
+          {(["dag", "uke", "måned", "år"] as Period[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={cn(
+                "px-4 py-1.5 text-sm font-medium rounded-lg transition-all capitalize",
+                period === p
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              {p.charAt(0).toUpperCase() + p.slice(1)}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-1 p-1 rounded-xl bg-slate-100 w-fit">
+          {(["poster", "kategori"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={cn(
+                "px-4 py-1.5 text-sm font-medium rounded-lg transition-all capitalize",
+                view === v
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              {v.charAt(0).toUpperCase() + v.slice(1)}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Navigator */}
@@ -156,6 +175,8 @@ export default function ReportsPage() {
         <div className="text-center py-16 text-slate-400">
           <p className="font-medium">Ingen timer registrert for denne perioden</p>
         </div>
+      ) : view === "kategori" ? (
+        <KategoriView entries={filtered} getCaseById={getCaseById} getCategoryById={getCategoryById} />
       ) : (
         <>
           {period === "dag" && <DagView entries={filtered} getCaseById={getCaseById} getCategoryById={getCategoryById} />}
@@ -164,6 +185,94 @@ export default function ReportsPage() {
           {period === "år" && <ÅrView entries={filtered} start={start} end={end} getCaseById={getCaseById} getCategoryById={getCategoryById} />}
         </>
       )}
+    </div>
+  );
+}
+
+// ── Kategori-visning ─────────────────────────────────────
+function KategoriView({ entries, getCaseById, getCategoryById }: {
+  entries: ReturnType<typeof useTimeEntries>["entries"];
+  getCaseById: (id: string) => ReturnType<typeof useCases>["cases"][0] | undefined;
+  getCategoryById: (id: string) => ReturnType<typeof useCategories>["categories"][0] | undefined;
+}) {
+  const router = useRouter();
+  const total = entries.reduce((s, e) => s + e.durationMinutes, 0);
+
+  const byCategory = useMemo(() => {
+    const map: Record<string, { minutes: number; cases: Record<string, number> }> = {};
+    entries.forEach((e) => {
+      const c = getCaseById(e.caseId);
+      const catId = c?.categoryId || "__ingen__";
+      if (!map[catId]) map[catId] = { minutes: 0, cases: {} };
+      map[catId].minutes += e.durationMinutes;
+      map[catId].cases[e.caseId] = (map[catId].cases[e.caseId] ?? 0) + e.durationMinutes;
+    });
+    return Object.entries(map)
+      .map(([catId, data]) => ({
+        catId,
+        category: catId === "__ingen__" ? undefined : getCategoryById(catId),
+        minutes: data.minutes,
+        pct: total > 0 ? Math.round((data.minutes / total) * 100) : 0,
+        cases: Object.entries(data.cases)
+          .map(([id, min]) => ({ id, title: getCaseById(id)?.title ?? "Ukjent sak", min }))
+          .sort((a, b) => b.min - a.min),
+      }))
+      .sort((a, b) => b.minutes - a.minutes);
+  }, [entries, getCaseById, getCategoryById, total]);
+
+  return (
+    <div className="space-y-3">
+      {byCategory.map((group) => {
+        const color = group.category?.color ?? "#94a3b8";
+        return (
+          <div key={group.catId} className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+            {/* Kategori-header */}
+            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-50 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <span
+                  className="inline-block h-3 w-3 rounded-full shrink-0"
+                  style={{ backgroundColor: color }}
+                />
+                <span className="text-sm font-semibold text-slate-700">
+                  {group.category?.name ?? "Ingen kategori"}
+                </span>
+                <span className="text-xs text-slate-400">{group.pct}%</span>
+              </div>
+              <span className="text-sm font-bold text-slate-800">{minutesToHours(group.minutes)}</span>
+            </div>
+
+            {/* Fremdriftslinje */}
+            <div className="h-1 bg-slate-100">
+              <div
+                className="h-full transition-all"
+                style={{ width: `${group.pct}%`, backgroundColor: color }}
+              />
+            </div>
+
+            {/* Saker i kategorien */}
+            <div className="divide-y divide-slate-50">
+              {group.cases.map((row) => (
+                <div
+                  key={row.id}
+                  onClick={() => router.push(`/cases/${row.id}`)}
+                  className="flex items-center justify-between px-5 py-2.5 cursor-pointer hover:bg-slate-50 transition-colors"
+                >
+                  <span className="text-sm text-slate-600 truncate">{row.title}</span>
+                  <span className="text-sm font-medium text-slate-700 shrink-0 ml-4">
+                    {minutesToHours(row.min)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Totalt */}
+      <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-5 py-3 flex justify-between">
+        <span className="text-sm font-semibold text-indigo-700">Totalt</span>
+        <span className="text-sm font-bold text-indigo-900">{minutesToHours(total)}</span>
+      </div>
     </div>
   );
 }
