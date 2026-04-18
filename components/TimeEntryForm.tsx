@@ -31,6 +31,13 @@ function timeToMinutes(t: string): number {
   return h * 60 + m;
 }
 
+function minutesToTime(min: number): string {
+  const clamped = Math.max(0, min);
+  const h = Math.floor(clamped / 60) % 24;
+  const m = clamped % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 function minutesToDisplay(min: number): string {
   const h = Math.floor(min / 60);
   const m = min % 60;
@@ -276,6 +283,23 @@ export function TimeEntryForm({ userId, cases, initialCaseId, editEntry }: TimeE
             = {minutesToDisplay(durationMin)}
           </p>
         )}
+        <div className="flex items-center justify-center gap-2">
+          <span className="text-xs text-slate-500">Trekk fra:</span>
+          {[5, 10, 15].map((mins) => (
+            <button
+              key={mins}
+              type="button"
+              className="text-xs px-2.5 py-1 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors"
+              onClick={() => {
+                const current = timeToMinutes(endTime);
+                const next = minutesToTime(current - mins);
+                setValue("endTime", next, { shouldValidate: true });
+              }}
+            >
+              −{mins} min
+            </button>
+          ))}
+        </div>
         {errors.endTime && (
           <p className="text-xs text-red-500">{errors.endTime.message}</p>
         )}
