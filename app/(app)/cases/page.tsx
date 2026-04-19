@@ -39,7 +39,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Search, MoreVertical, Pencil, Trash2, Clock } from "lucide-react";
+import { Plus, Search, MoreVertical, Pencil, Trash2, Clock, ArrowUpDown } from "lucide-react";
 import { format } from "date-fns";
 import { nb } from "date-fns/locale";
 import { toast } from "sonner";
@@ -62,6 +62,7 @@ export default function CasesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("alle");
   const [categoryFilter, setCategoryFilter] = useState<string>("alle");
+  const [sortBy, setSortBy] = useState<"oppdatert" | "frist" | "opprettet" | "tittel">("oppdatert");
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const getCategoryById = (id: string) => categories.find((c) => c.id === id);
@@ -69,12 +70,24 @@ export default function CasesPage() {
   const totalMinutesForCase = (caseId: string) =>
     entries.filter((e) => e.caseId === caseId).reduce((sum, e) => sum + e.durationMinutes, 0);
 
-  const filtered = cases.filter((c) => {
-    const matchSearch = c.title.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "alle" || c.status === statusFilter;
-    const matchCat = categoryFilter === "alle" || c.categoryId === categoryFilter;
-    return matchSearch && matchStatus && matchCat;
-  });
+  const filtered = cases
+    .filter((c) => {
+      const matchSearch = c.title.toLowerCase().includes(search.toLowerCase());
+      const matchStatus = statusFilter === "alle" || c.status === statusFilter;
+      const matchCat = categoryFilter === "alle" || c.categoryId === categoryFilter;
+      return matchSearch && matchStatus && matchCat;
+    })
+    .sort((a, b) => {
+      if (sortBy === "frist") {
+        if (!a.deadline && !b.deadline) return 0;
+        if (!a.deadline) return 1;
+        if (!b.deadline) return -1;
+        return a.deadline.getTime() - b.deadline.getTime();
+      }
+      if (sortBy === "opprettet") return b.createdAt.getTime() - a.createdAt.getTime();
+      if (sortBy === "tittel") return a.title.localeCompare(b.title, "nb");
+      return b.updatedAt.getTime() - a.updatedAt.getTime();
+    });
 
   const handleDelete = async () => {
     if (!deleteId || !user) return;
@@ -106,7 +119,9 @@ export default function CasesPage() {
         </div>
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "alle")}>
           <SelectTrigger className="w-40">
-            <SelectValue placeholder="Status" />
+            <span className="text-sm truncate">
+              {statusFilter === "alle" ? "alle" : STATUS_LABELS[statusFilter as CaseStatus]}
+            </span>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="alle">Alle statuser</SelectItem>
@@ -119,7 +134,11 @@ export default function CasesPage() {
         </Select>
         <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v ?? "alle")}>
           <SelectTrigger className="w-44">
-            <SelectValue placeholder="Kategori" />
+            <span className="text-sm truncate">
+              {categoryFilter === "alle"
+                ? "Alle kategorier"
+                : categories.find((c) => c.id === categoryFilter)?.name ?? "Alle kategorier"}
+            </span>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="alle">Alle kategorier</SelectItem>
@@ -128,6 +147,23 @@ export default function CasesPage() {
                 {cat.name}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={sortBy} onValueChange={(v) => v && setSortBy(v as typeof sortBy)}>
+          <SelectTrigger className="w-44">
+            <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="text-sm truncate">
+              {sortBy === "oppdatert" ? "Sist oppdatert"
+                : sortBy === "frist" ? "Frist"
+                : sortBy === "opprettet" ? "Opprettet"
+                : "Tittel"}
+            </span>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="oppdatert">Sist oppdatert</SelectItem>
+            <SelectItem value="frist">Frist</SelectItem>
+            <SelectItem value="opprettet">Opprettet</SelectItem>
+            <SelectItem value="tittel">Tittel</SelectItem>
           </SelectContent>
         </Select>
       </div>
