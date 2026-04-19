@@ -1,5 +1,9 @@
 export type CaseStatus = "ikke_startet" | "påbegynt" | "pause" | "avsluttet";
 
+export interface UserSettings {
+  globalSkattetrekk?: number;
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -24,6 +28,7 @@ export interface Case {
   honorarPaid?: boolean;
   honorarClaimSent?: boolean;
   honorarClaimSentDate?: Date;
+  skattetrekk?: number;
 }
 
 export interface TimeEntry {

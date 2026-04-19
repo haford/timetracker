@@ -36,6 +36,7 @@ const schema = z.object({
   isPaid: z.boolean(),
   honorar: z.number().min(0).optional(),
   honorarPaid: z.boolean(),
+  skattetrekk: z.number().min(0).max(100).optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -65,6 +66,7 @@ export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
       isPaid: editCase?.isPaid ?? false,
       honorar: editCase?.honorar,
       honorarPaid: editCase?.honorarPaid ?? false,
+      skattetrekk: editCase?.skattetrekk,
     },
   });
 
@@ -89,6 +91,7 @@ export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
       if (startDate) payload.startDate = startDate;
       if (deadline) payload.deadline = deadline;
       if (data.isPaid && data.honorar) payload.honorar = data.honorar;
+      if (data.isPaid && data.skattetrekk != null) payload.skattetrekk = data.skattetrekk;
       if (editCase) {
         await updateCase(userId, editCase.id, payload as Parameters<typeof updateCase>[2]);
         toast.success("Sak oppdatert");
@@ -242,6 +245,21 @@ export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
                 placeholder="0"
                 {...register("honorar", { valueAsNumber: true })}
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="skattetrekk">Skattetrekk for denne saken (%)</Label>
+              <div className="relative">
+                <Input
+                  id="skattetrekk"
+                  type="number"
+                  min={0}
+                  max={100}
+                  placeholder="La stå tomt for å bruke global sats"
+                  className="pr-8"
+                  {...register("skattetrekk", { valueAsNumber: true })}
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">%</span>
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <input

@@ -6,6 +6,7 @@ import {
   deleteDoc,
   getDocs,
   getDoc,
+  setDoc,
   query,
   orderBy,
   where,
@@ -14,7 +15,7 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { getFirebaseDb } from "./firebase";
-import type { Case, Category, TimeEntry, CaseStatus } from "./types";
+import type { Case, Category, TimeEntry, CaseStatus, UserSettings } from "./types";
 
 // ──────────────────────────────────────────
 // Helpers
@@ -87,6 +88,7 @@ const caseFromDoc = (d: { id: string; data: () => Record<string, unknown> }): Ca
     honorarClaimSentDate: data.honorarClaimSentDate
       ? toDate(data.honorarClaimSentDate as Timestamp)
       : undefined,
+    skattetrekk: (data.skattetrekk as number) || undefined,
   };
 };
 
@@ -200,3 +202,24 @@ export const updateTimeEntry = (
 
 export const deleteTimeEntry = (userId: string, entryId: string) =>
   deleteDoc(doc(getFirebaseDb(), "users", userId, "timeEntries", entryId));
+
+// ──────────────────────────────────────────
+// User Settings
+// ──────────────────────────────────────────
+
+const settingsDoc = (userId: string) =>
+  doc(getFirebaseDb(), "users", userId, "settings", "global");
+
+export const subscribeUserSettings = (
+  userId: string,
+  cb: (settings: UserSettings) => void
+): Unsubscribe => {
+  return onSnapshot(settingsDoc(userId), (snap) => {
+    if (!snap.exists()) { cb({}); return; }
+    const data = snap.data();
+    cb({ globalSkattetrekk: (data.globalSkattetrekk as number) || undefined });
+  });
+};
+
+export const updateUserSettings = (userId: string, data: Partial<UserSettings>) =>
+  setDoc(settingsDoc(userId), data, { merge: true });
