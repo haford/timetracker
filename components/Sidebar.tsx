@@ -12,6 +12,7 @@ import {
   BarChart3,
   Scale,
   LogOut,
+  Banknote,
 } from "lucide-react";
 
 const navItems = [
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/timer", label: "Timeføring", icon: Clock },
   { href: "/categories", label: "Kategorier", icon: Tag },
   { href: "/reports", label: "Rapporter", icon: BarChart3 },
+  { href: "/okonomi", label: "Økonomi", icon: Banknote },
 ];
 
 export function Sidebar() {

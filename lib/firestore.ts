@@ -83,6 +83,10 @@ const caseFromDoc = (d: { id: string; data: () => Record<string, unknown> }): Ca
     isPaid: (data.isPaid as boolean) ?? false,
     honorar: (data.honorar as number) || undefined,
     honorarPaid: (data.honorarPaid as boolean) ?? false,
+    honorarClaimSent: (data.honorarClaimSent as boolean) ?? false,
+    honorarClaimSentDate: data.honorarClaimSentDate
+      ? toDate(data.honorarClaimSentDate as Timestamp)
+      : undefined,
   };
 };
 
@@ -117,6 +121,11 @@ export const updateCase = (
     ...data,
     startDate: data.startDate ? Timestamp.fromDate(data.startDate) : null,
     deadline: data.deadline ? Timestamp.fromDate(data.deadline) : null,
+    honorarClaimSentDate: data.honorarClaimSentDate
+      ? Timestamp.fromDate(data.honorarClaimSentDate)
+      : data.honorarClaimSentDate === null
+      ? null
+      : undefined,
     updatedAt: Timestamp.now(),
   });
 

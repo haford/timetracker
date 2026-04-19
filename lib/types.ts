@@ -22,6 +22,8 @@ export interface Case {
   isPaid?: boolean;
   honorar?: number;
   honorarPaid?: boolean;
+  honorarClaimSent?: boolean;
+  honorarClaimSentDate?: Date;
 }
 
 export interface TimeEntry {
