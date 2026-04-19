@@ -7,7 +7,6 @@ import { useCases } from "@/hooks/useCases";
 import { useTimeEntries } from "@/hooks/useTimeEntries";
 import { updateCase } from "@/lib/firestore";
 import { STATUS_LABELS } from "@/lib/types";
-import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, Clock, Banknote, AlertCircle, CheckCircle2, Send } from "lucide-react";
@@ -265,16 +264,12 @@ function CaseRow({
           </div>
         ) : (
           <Popover open={calOpen} onOpenChange={setCalOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={saving}
-                className="h-7 px-2.5 text-xs gap-1.5 text-slate-600"
-              >
-                <Send className="h-3 w-3" />
-                Merk sendt
-              </Button>
+            <PopoverTrigger
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors disabled:opacity-50"
+            >
+              <Send className="h-3 w-3" />
+              Merk sendt
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="end">
               <div className="p-3 border-b border-slate-100">
