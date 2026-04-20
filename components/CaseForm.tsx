@@ -34,9 +34,15 @@ const schema = z.object({
   contactInfo: z.string(),
   notes: z.string(),
   isPaid: z.boolean(),
-  honorar: z.number().min(0).optional(),
+  honorar: z.preprocess(
+    (v) => (v === "" || v === null || v === undefined || (typeof v === "number" && isNaN(v)) ? undefined : Number(String(v).replace(",", "."))),
+    z.number().min(0).optional()
+  ),
   honorarPaid: z.boolean(),
-  skattetrekk: z.number().min(0).max(100).optional(),
+  skattetrekk: z.preprocess(
+    (v) => (v === "" || v === null || v === undefined || (typeof v === "number" && isNaN(v)) ? undefined : Number(String(v).replace(",", "."))),
+    z.number().min(0).max(100).optional()
+  ),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -242,8 +248,9 @@ export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
                 id="honorar"
                 type="number"
                 min={0}
+                step="0.01"
                 placeholder="0"
-                {...register("honorar", { valueAsNumber: true })}
+                {...register("honorar")}
               />
             </div>
             <div className="space-y-1.5">
@@ -256,7 +263,7 @@ export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
                   max={100}
                   placeholder="La stå tomt for å bruke global sats"
                   className="pr-8"
-                  {...register("skattetrekk", { valueAsNumber: true })}
+                  {...register("skattetrekk")}
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">%</span>
               </div>
