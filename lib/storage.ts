@@ -125,3 +125,29 @@ export const uploadSignertAvtale = (
 export const deleteSignertAvtale = async (storagePath: string): Promise<void> => {
   await deleteObject(ref(getFirebaseStorage(), storagePath));
 };
+
+export const uploadLonnsslipp = (
+  userId: string,
+  caseId: string,
+  file: File,
+  onProgress: (pct: number) => void
+): Promise<{ downloadUrl: string; storagePath: string }> => {
+  return new Promise((resolve, reject) => {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._\-æøåÆØÅ ]/g, "_");
+    const storagePath = `users/${userId}/cases/${caseId}/lonnsslipp_${Date.now()}_${safeName}`;
+    const storageRef = ref(getFirebaseStorage(), storagePath);
+    const task = uploadBytesResumable(storageRef, file);
+    task.on("state_changed",
+      (s: UploadTaskSnapshot) => onProgress(Math.round((s.bytesTransferred / s.totalBytes) * 100)),
+      reject,
+      async () => {
+        try { resolve({ downloadUrl: await getDownloadURL(task.snapshot.ref), storagePath }); }
+        catch (err) { reject(err); }
+      }
+    );
+  });
+};
+
+export const deleteLonnsslipp = async (storagePath: string): Promise<void> => {
+  await deleteObject(ref(getFirebaseStorage(), storagePath));
+};

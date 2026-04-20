@@ -96,6 +96,12 @@ const caseFromDoc = (d: { id: string; data: () => Record<string, unknown> }): Ca
     signertAvtaleStoragePath: (data.signertAvtaleStoragePath as string) || undefined,
     signertAvtaleDownloadUrl: (data.signertAvtaleDownloadUrl as string) || undefined,
     signertAvtaleNavn: (data.signertAvtaleNavn as string) || undefined,
+    honorarUtbetaltDato: data.honorarUtbetaltDato
+      ? toDate(data.honorarUtbetaltDato as Timestamp) : undefined,
+    honorarUtbetaltBelop: (data.honorarUtbetaltBelop as number) || undefined,
+    lonnsslippStoragePath: (data.lonnsslippStoragePath as string) || undefined,
+    lonnsslippDownloadUrl: (data.lonnsslippDownloadUrl as string) || undefined,
+    lonnsslippNavn: (data.lonnsslippNavn as string) || undefined,
   };
 };
 
@@ -140,6 +146,9 @@ export const updateCase = (
   if ("signertOgInnsendtDate" in data)
     update.signertOgInnsendtDate = data.signertOgInnsendtDate
       ? Timestamp.fromDate(data.signertOgInnsendtDate) : null;
+  if ("honorarUtbetaltDato" in data)
+    update.honorarUtbetaltDato = data.honorarUtbetaltDato
+      ? Timestamp.fromDate(data.honorarUtbetaltDato) : null;
 
   // Remove undefined values — Firestore rejects them
   Object.keys(update).forEach((k) => update[k] === undefined && delete update[k]);

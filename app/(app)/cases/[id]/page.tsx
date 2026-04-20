@@ -34,6 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Clock, Pencil, Plus, Trash2, CalendarDays, User, Banknote } from "lucide-react";
 import { CaseDocuments } from "@/components/CaseDocuments";
 import { SignertAvtaleSection } from "@/components/SignertAvtaleSection";
+import { UtbetalingSection } from "@/components/UtbetalingSection";
 import { format } from "date-fns";
 import { nb } from "date-fns/locale";
 import { toast } from "sonner";
@@ -175,6 +176,13 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
           caseData={caseData}
           onUpdate={(updated) => setCaseData((prev) => prev ? { ...prev, ...updated } : prev)}
         />
+        {caseData.isPaid && (
+          <UtbetalingSection
+            userId={user!.uid}
+            caseData={caseData}
+            onUpdate={(updated) => setCaseData((prev) => prev ? { ...prev, ...updated } : prev)}
+          />
+        )}
         {caseData.notes && (
           <div className="px-4 py-3">
             <p className="text-xs text-slate-400 mb-1">Merknader</p>

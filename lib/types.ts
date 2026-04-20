@@ -34,6 +34,11 @@ export interface Case {
   signertAvtaleStoragePath?: string;
   signertAvtaleDownloadUrl?: string;
   signertAvtaleNavn?: string;
+  honorarUtbetaltDato?: Date;
+  honorarUtbetaltBelop?: number;
+  lonnsslippStoragePath?: string;
+  lonnsslippDownloadUrl?: string;
+  lonnsslippNavn?: string;
 }
 
 export interface CaseDocument {
