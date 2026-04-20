@@ -29,6 +29,11 @@ export interface Case {
   honorarClaimSent?: boolean;
   honorarClaimSentDate?: Date;
   skattetrekk?: number;
+  signertOgInnsendt?: boolean;
+  signertOgInnsendtDate?: Date;
+  signertAvtaleStoragePath?: string;
+  signertAvtaleDownloadUrl?: string;
+  signertAvtaleNavn?: string;
 }
 
 export interface CaseDocument {

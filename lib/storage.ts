@@ -5,6 +5,7 @@ import {
   deleteObject,
   type UploadTaskSnapshot,
 } from "firebase/storage";
+import { updateCase } from "./firestore";
 import {
   collection,
   addDoc,
@@ -89,4 +90,38 @@ export const deleteCaseDocument = async (
 ): Promise<void> => {
   await deleteObject(ref(getFirebaseStorage(), document.storagePath));
   await deleteDoc(doc(getFirebaseDb(), "users", userId, "cases", caseId, "documents", document.id));
+};
+
+export const uploadSignertAvtale = (
+  userId: string,
+  caseId: string,
+  file: File,
+  onProgress: (pct: number) => void
+): Promise<{ downloadUrl: string; storagePath: string }> => {
+  return new Promise((resolve, reject) => {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._\-æøåÆØÅ ]/g, "_");
+    const storagePath = `users/${userId}/cases/${caseId}/signert_${Date.now()}_${safeName}`;
+    const storageRef = ref(getFirebaseStorage(), storagePath);
+    const task = uploadBytesResumable(storageRef, file);
+
+    task.on(
+      "state_changed",
+      (snapshot: UploadTaskSnapshot) => {
+        onProgress(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100));
+      },
+      reject,
+      async () => {
+        try {
+          const downloadUrl = await getDownloadURL(task.snapshot.ref);
+          resolve({ downloadUrl, storagePath });
+        } catch (err) {
+          reject(err);
+        }
+      }
+    );
+  });
+};
+
+export const deleteSignertAvtale = async (storagePath: string): Promise<void> => {
+  await deleteObject(ref(getFirebaseStorage(), storagePath));
 };

@@ -89,6 +89,13 @@ const caseFromDoc = (d: { id: string; data: () => Record<string, unknown> }): Ca
       ? toDate(data.honorarClaimSentDate as Timestamp)
       : undefined,
     skattetrekk: (data.skattetrekk as number) || undefined,
+    signertOgInnsendt: (data.signertOgInnsendt as boolean) ?? false,
+    signertOgInnsendtDate: data.signertOgInnsendtDate
+      ? toDate(data.signertOgInnsendtDate as Timestamp)
+      : undefined,
+    signertAvtaleStoragePath: (data.signertAvtaleStoragePath as string) || undefined,
+    signertAvtaleDownloadUrl: (data.signertAvtaleDownloadUrl as string) || undefined,
+    signertAvtaleNavn: (data.signertAvtaleNavn as string) || undefined,
   };
 };
 
@@ -126,6 +133,11 @@ export const updateCase = (
     honorarClaimSentDate: data.honorarClaimSentDate
       ? Timestamp.fromDate(data.honorarClaimSentDate)
       : data.honorarClaimSentDate === null
+      ? null
+      : undefined,
+    signertOgInnsendtDate: data.signertOgInnsendtDate
+      ? Timestamp.fromDate(data.signertOgInnsendtDate)
+      : data.signertOgInnsendtDate === null
       ? null
       : undefined,
     updatedAt: Timestamp.now(),

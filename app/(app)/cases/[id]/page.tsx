@@ -33,6 +33,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Clock, Pencil, Plus, Trash2, CalendarDays, User, Banknote } from "lucide-react";
 import { CaseDocuments } from "@/components/CaseDocuments";
+import { SignertAvtaleSection } from "@/components/SignertAvtaleSection";
 import { format } from "date-fns";
 import { nb } from "date-fns/locale";
 import { toast } from "sonner";
@@ -133,51 +134,54 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
       </div>
 
       {/* Ekstra info */}
-      {(caseData.contactName || caseData.notes || caseData.isPaid) && (
-        <div className="mb-6 rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
-          {caseData.contactName && (
-            <div className="flex items-start gap-3 px-4 py-3">
-              <User className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-xs text-slate-400 mb-0.5">Kontaktperson</p>
-                <p className="text-sm font-medium text-slate-800">{caseData.contactName}</p>
-                {caseData.contactInfo && <p className="text-xs text-slate-500">{caseData.contactInfo}</p>}
+      <div className="mb-6 rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+        {caseData.contactName && (
+          <div className="flex items-start gap-3 px-4 py-3">
+            <User className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-xs text-slate-400 mb-0.5">Kontaktperson</p>
+              <p className="text-sm font-medium text-slate-800">{caseData.contactName}</p>
+              {caseData.contactInfo && <p className="text-xs text-slate-500">{caseData.contactInfo}</p>}
+            </div>
+          </div>
+        )}
+        {caseData.isPaid && (
+          <div className="flex items-start gap-3 px-4 py-3">
+            <Banknote className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-xs text-slate-400 mb-0.5">Honorar</p>
+              <div className="flex items-center gap-2">
+                {caseData.honorar ? (
+                  <p className="text-sm font-medium text-slate-800">
+                    {caseData.honorar.toLocaleString("nb-NO")} kr
+                  </p>
+                ) : (
+                  <p className="text-sm text-slate-500">Ikke angitt</p>
+                )}
+                <span className={cn(
+                  "text-xs font-medium px-2 py-0.5 rounded-full",
+                  caseData.honorarPaid
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-amber-100 text-amber-700"
+                )}>
+                  {caseData.honorarPaid ? "Utbetalt" : "Ikke utbetalt"}
+                </span>
               </div>
             </div>
-          )}
-          {caseData.isPaid && (
-            <div className="flex items-start gap-3 px-4 py-3">
-              <Banknote className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-xs text-slate-400 mb-0.5">Honorar</p>
-                <div className="flex items-center gap-2">
-                  {caseData.honorar ? (
-                    <p className="text-sm font-medium text-slate-800">
-                      {caseData.honorar.toLocaleString("nb-NO")} kr
-                    </p>
-                  ) : (
-                    <p className="text-sm text-slate-500">Ikke angitt</p>
-                  )}
-                  <span className={cn(
-                    "text-xs font-medium px-2 py-0.5 rounded-full",
-                    caseData.honorarPaid
-                      ? "bg-emerald-100 text-emerald-700"
-                      : "bg-amber-100 text-amber-700"
-                  )}>
-                    {caseData.honorarPaid ? "Utbetalt" : "Ikke utbetalt"}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-          {caseData.notes && (
-            <div className="px-4 py-3">
-              <p className="text-xs text-slate-400 mb-1">Merknader</p>
-              <p className="text-sm text-slate-700 whitespace-pre-wrap">{caseData.notes}</p>
-            </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+        <SignertAvtaleSection
+          userId={user!.uid}
+          caseData={caseData}
+          onUpdate={(updated) => setCaseData((prev) => prev ? { ...prev, ...updated } : prev)}
+        />
+        {caseData.notes && (
+          <div className="px-4 py-3">
+            <p className="text-xs text-slate-400 mb-1">Merknader</p>
+            <p className="text-sm text-slate-700 whitespace-pre-wrap">{caseData.notes}</p>
+          </div>
+        )}
+      </div>
 
       {/* Stats */}
       <div className="mb-6 grid grid-cols-3 gap-4">

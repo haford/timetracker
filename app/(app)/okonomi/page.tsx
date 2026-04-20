@@ -13,6 +13,7 @@ import { Calendar } from "@/components/ui/calendar";
 import {
   Clock, Banknote, AlertCircle, CheckCircle2, Send, Pencil, Check, X,
 } from "lucide-react";
+import { SignertAvtaleSection } from "@/components/SignertAvtaleSection";
 import { format } from "date-fns";
 import { nb } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -207,11 +208,12 @@ export default function OkonomiPage() {
         </div>
       ) : (
         <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-          <div className="hidden sm:grid grid-cols-[1fr_80px_160px_100px_180px] gap-4 px-5 py-2.5 border-b border-slate-100 bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+          <div className="hidden sm:grid grid-cols-[1fr_80px_160px_100px_160px_180px] gap-4 px-5 py-2.5 border-b border-slate-100 bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
             <span>Sak</span>
             <span className="text-right">Timer</span>
             <span className="text-right">Honorar</span>
             <span className="text-right">Status</span>
+            <span className="text-right">Signert</span>
             <span className="text-right">Honorarkrav</span>
           </div>
           <div className="divide-y divide-slate-100">
@@ -283,7 +285,7 @@ function CaseRow({ userId, c, minutes, globalRate }: {
   };
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-[1fr_80px_160px_100px_180px] gap-2 sm:gap-4 px-5 py-4 items-center hover:bg-slate-50 transition-colors">
+    <div className="grid grid-cols-1 sm:grid-cols-[1fr_80px_160px_100px_160px_180px] gap-2 sm:gap-4 px-5 py-4 items-center hover:bg-slate-50 transition-colors">
       {/* Sak */}
       <div className="cursor-pointer min-w-0" onClick={() => router.push(`/cases/${c.id}`)}>
         <p className="text-sm font-semibold text-slate-800 truncate hover:text-indigo-600 transition-colors">
@@ -334,6 +336,16 @@ function CaseRow({ userId, c, minutes, globalRate }: {
             Pågår
           </span>
         )}
+      </div>
+
+      {/* Signert */}
+      <div className="flex justify-end">
+        <SignertAvtaleSection
+          userId={userId}
+          caseData={c}
+          onUpdate={() => {}}
+          compact
+        />
       </div>
 
       {/* Honorarkrav */}
