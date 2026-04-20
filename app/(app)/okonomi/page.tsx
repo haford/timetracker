@@ -302,7 +302,7 @@ function CaseRow({ userId, c, minutes, globalRate }: {
           <p className="text-sm font-semibold text-slate-800 truncate hover:text-indigo-600 transition-colors leading-snug">
             {c.title}
           </p>
-          {avvik && <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" title="Avvik i utbetaling" />}
+          {avvik && <span title="Avvik i utbetaling"><AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" /></span>}
         </div>
         <div className="flex items-center gap-2 mt-0.5">
           {isForfalt
