@@ -45,7 +45,19 @@ const schema = z.object({
   ),
 });
 
-type FormData = z.infer<typeof schema>;
+type FormData = {
+  title: string;
+  description: string;
+  categoryId: string;
+  status: CaseStatus;
+  contactName: string;
+  contactInfo: string;
+  notes: string;
+  isPaid: boolean;
+  honorar?: number;
+  honorarPaid: boolean;
+  skattetrekk?: number;
+};
 
 interface CaseFormProps {
   userId: string;
