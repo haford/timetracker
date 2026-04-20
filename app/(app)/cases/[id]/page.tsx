@@ -265,9 +265,11 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
       </Card>
 
       {/* Dokumenter */}
-      <div className="mt-6">
-        <CaseDocuments userId={user.uid} caseId={id} />
-      </div>
+      {user && (
+        <div className="mt-6">
+          <CaseDocuments userId={user.uid} caseId={id} />
+        </div>
+      )}
 
       <AlertDialog open={!!deleteEntryId} onOpenChange={(open) => !open && setDeleteEntryId(null)}>
         <AlertDialogContent>
