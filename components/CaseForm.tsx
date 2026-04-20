@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { addCase, updateCase } from "@/lib/firestore";
@@ -72,7 +72,7 @@ export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
   const [saving, setSaving] = useState(false);
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as Resolver<FormData>,
     defaultValues: {
       title: editCase?.title ?? "",
       description: editCase?.description ?? "",
