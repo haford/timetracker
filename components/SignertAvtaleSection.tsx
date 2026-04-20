@@ -69,7 +69,8 @@ export function SignertAvtaleSection({ userId, caseData, onUpdate, compact = fal
       });
       onUpdate({ signertAvtaleDownloadUrl: downloadUrl, signertAvtaleStoragePath: storagePath, signertAvtaleNavn: file.name });
       toast.success(`"${file.name}" lastet opp`);
-    } catch {
+    } catch (err) {
+      console.error("[SignertAvtale] upload error:", err);
       toast.error("Opplasting feilet");
     } finally {
       setUploading(false);

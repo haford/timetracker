@@ -59,7 +59,8 @@ export function CaseDocuments({ userId, caseId }: Props) {
     try {
       await uploadCaseDocument(userId, caseId, file, setProgress);
       toast.success(`"${file.name}" lastet opp`);
-    } catch {
+    } catch (err) {
+      console.error("[CaseDocuments] upload error:", err);
       toast.error("Opplasting feilet");
     } finally {
       setUploading(false);
