@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Clock, Pencil, Plus, Trash2, CalendarDays, User, Banknote } from "lucide-react";
+import { CaseDocuments } from "@/components/CaseDocuments";
 import { format } from "date-fns";
 import { nb } from "date-fns/locale";
 import { toast } from "sonner";
@@ -262,6 +263,11 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
           )}
         </CardContent>
       </Card>
+
+      {/* Dokumenter */}
+      <div className="mt-6">
+        <CaseDocuments userId={user.uid} caseId={id} />
+      </div>
 
       <AlertDialog open={!!deleteEntryId} onOpenChange={(open) => !open && setDeleteEntryId(null)}>
         <AlertDialogContent>

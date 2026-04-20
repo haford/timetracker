@@ -31,6 +31,15 @@ export interface Case {
   skattetrekk?: number;
 }
 
+export interface CaseDocument {
+  id: string;
+  name: string;
+  storagePath: string;
+  downloadUrl: string;
+  size: number;
+  uploadedAt: Date;
+}
+
 export interface TimeEntry {
   id: string;
   caseId: string;
