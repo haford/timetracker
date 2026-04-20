@@ -125,23 +125,27 @@ export const updateCase = (
   userId: string,
   caseId: string,
   data: Partial<Omit<Case, "id" | "createdAt">>
-) =>
-  updateDoc(doc(getFirebaseDb(), "users", userId, "cases", caseId), {
-    ...data,
-    startDate: data.startDate ? Timestamp.fromDate(data.startDate) : null,
-    deadline: data.deadline ? Timestamp.fromDate(data.deadline) : null,
-    honorarClaimSentDate: data.honorarClaimSentDate
-      ? Timestamp.fromDate(data.honorarClaimSentDate)
-      : data.honorarClaimSentDate === null
-      ? null
-      : undefined,
-    signertOgInnsendtDate: data.signertOgInnsendtDate
-      ? Timestamp.fromDate(data.signertOgInnsendtDate)
-      : data.signertOgInnsendtDate === null
-      ? null
-      : undefined,
-    updatedAt: Timestamp.now(),
-  });
+) => {
+  // Build update object — only include date fields when explicitly provided to
+  // avoid sending undefined values which Firestore rejects.
+  const update: Record<string, unknown> = { ...data, updatedAt: Timestamp.now() };
+
+  if ("startDate" in data)
+    update.startDate = data.startDate ? Timestamp.fromDate(data.startDate) : null;
+  if ("deadline" in data)
+    update.deadline = data.deadline ? Timestamp.fromDate(data.deadline) : null;
+  if ("honorarClaimSentDate" in data)
+    update.honorarClaimSentDate = data.honorarClaimSentDate
+      ? Timestamp.fromDate(data.honorarClaimSentDate) : null;
+  if ("signertOgInnsendtDate" in data)
+    update.signertOgInnsendtDate = data.signertOgInnsendtDate
+      ? Timestamp.fromDate(data.signertOgInnsendtDate) : null;
+
+  // Remove undefined values — Firestore rejects them
+  Object.keys(update).forEach((k) => update[k] === undefined && delete update[k]);
+
+  return updateDoc(doc(getFirebaseDb(), "users", userId, "cases", caseId), update);
+};
 
 export const deleteCase = (userId: string, caseId: string) =>
   deleteDoc(doc(getFirebaseDb(), "users", userId, "cases", caseId));
