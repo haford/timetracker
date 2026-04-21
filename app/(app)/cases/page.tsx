@@ -38,7 +38,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Search, MoreVertical, Pencil, Trash2, Clock, ArrowUpDown, CalendarDays } from "lucide-react";
+import { Plus, Search, MoreVertical, Pencil, Trash2, Clock, ArrowUpDown, CalendarDays, Copy } from "lucide-react";
 import { format, isPast, isToday } from "date-fns";
 import { nb } from "date-fns/locale";
 import { toast } from "sonner";
@@ -257,6 +257,10 @@ export default function CasesPage() {
                         <DropdownMenuItem onClick={() => router.push(`/cases/${c.id}/edit`)}>
                           <Pencil className="h-4 w-4 mr-2" />
                           Rediger
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => router.push(`/cases/new?fra=${c.id}`)}>
+                          <Copy className="h-4 w-4 mr-2" />
+                          Dupliser
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => router.push(`/timer/new?caseId=${c.id}`)}>
                           <Clock className="h-4 w-4 mr-2" />

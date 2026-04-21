@@ -63,10 +63,12 @@ interface CaseFormProps {
   userId: string;
   categories: Category[];
   editCase?: Case;
+  templateCase?: Case;
 }
 
-export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
+export function CaseForm({ userId, categories, editCase, templateCase }: CaseFormProps) {
   const router = useRouter();
+  const src = editCase ?? templateCase;
   const [startDate, setStartDate] = useState<Date | undefined>(editCase?.startDate);
   const [deadline, setDeadline] = useState<Date | undefined>(editCase?.deadline);
   const [saving, setSaving] = useState(false);
@@ -74,17 +76,17 @@ export function CaseForm({ userId, categories, editCase }: CaseFormProps) {
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema) as Resolver<FormData>,
     defaultValues: {
-      title: editCase?.title ?? "",
-      description: editCase?.description ?? "",
-      categoryId: editCase?.categoryId ?? "",
+      title: editCase?.title ?? (templateCase ? `Kopi av ${templateCase.title}` : ""),
+      description: src?.description ?? "",
+      categoryId: src?.categoryId ?? "",
       status: editCase?.status ?? "ikke_startet",
-      contactName: editCase?.contactName ?? "",
-      contactInfo: editCase?.contactInfo ?? "",
+      contactName: src?.contactName ?? "",
+      contactInfo: src?.contactInfo ?? "",
       notes: editCase?.notes ?? "",
-      isPaid: editCase?.isPaid ?? false,
-      honorar: editCase?.honorar,
+      isPaid: src?.isPaid ?? false,
+      honorar: src?.honorar,
       honorarPaid: editCase?.honorarPaid ?? false,
-      skattetrekk: editCase?.skattetrekk,
+      skattetrekk: src?.skattetrekk,
     },
   });
 
