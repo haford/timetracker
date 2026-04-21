@@ -179,23 +179,37 @@ export default function OkonomiPage() {
 
       {/* Summary grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <BigStat label="Fakturert" value={formatNok(totals.fakturertBrutto)}
-          sub={`av totalt ${formatNok(totals.brutto)}`} />
-        <BigStat label="Gjenstår fakturering" value={formatNok(totals.gjenstårFakturering)}
-          warn={totals.gjenstårFakturering > 0} />
-        <BigStat label="Utbetalt" value={formatNok(totals.utbetaltSum)} green />
-        <BigStat label="Gjenstår utbetaling" value={formatNok(totals.gjenstårUtbetaling)}
+        <BigStat
+          label="Totalt honorar"
+          value={formatNok(totals.brutto)}
+          sub={totals.netto !== totals.brutto ? `${formatNok(totals.netto)} netto` : undefined}
+          detail="brutto, alle betalte oppdrag"
+        />
+        <BigStat
+          label="Krav sendt"
+          value={formatNok(totals.fakturertBrutto)}
+          sub={totals.gjenstårFakturering > 0 ? `${formatNok(totals.gjenstårFakturering)} ikke sendt` : "Alle krav sendt"}
+          detail="brutto"
+          warn={totals.gjenstårFakturering > 0}
+        />
+        <BigStat
+          label="Mottatt"
+          value={formatNok(totals.utbetaltSum)}
+          sub={totals.avvikCount > 0 ? `${totals.avvikCount} avvik` : undefined}
+          detail="faktisk utbetalt beløp"
+          green={totals.utbetaltSum > 0}
+        />
+        <BigStat
+          label="Utestående"
+          value={formatNok(totals.gjenstårUtbetaling)}
+          sub="krav sendt, ikke utbetalt"
+          detail="brutto"
           warn={totals.gjenstårUtbetaling > 0}
-          sub={totals.avvikCount > 0 ? `${totals.avvikCount} avvik` : undefined} />
+        />
       </div>
 
-      {/* Netto info + global rate */}
-      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
-        <div className="text-sm text-slate-600">
-          Netto honorar totalt:{" "}
-          <span className="font-semibold text-emerald-700">{formatNok(totals.netto)}</span>
-          {globalRate != null && <span className="text-xs text-slate-400 ml-1">etter {globalRate}% trekk</span>}
-        </div>
+      {/* Global rate */}
+      <div className="flex items-center justify-end rounded-xl border border-slate-200 bg-white px-4 py-2.5">
         <div className="flex items-center gap-2 text-sm text-slate-500">
           <span>Global skattetrekk:</span>
           <GlobalRateEdit
@@ -229,10 +243,17 @@ export default function OkonomiPage() {
         <div className="text-center py-16 text-slate-400 font-medium">Ingen oppdrag å vise</div>
       ) : (
         <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-          <div className="grid grid-cols-[1fr_110px_140px_140px_140px] border-b border-slate-100 bg-slate-50">
-            {["Sak", "Honorar", "Signert", "Krav sendt", "Utbetalt"].map((h, i) => (
-              <div key={h} className={cn("px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wider", i > 0 && "border-l border-slate-100")}>
-                {h}
+          <div className="grid grid-cols-[1fr_130px_140px_140px_140px] border-b border-slate-100 bg-slate-50">
+            {[
+              { label: "Sak", hint: "" },
+              { label: "Honorar", hint: "brutto / netto" },
+              { label: "Signert avtale", hint: "" },
+              { label: "Krav sendt", hint: "" },
+              { label: "Utbetalt", hint: "faktisk beløp" },
+            ].map(({ label, hint }, i) => (
+              <div key={label} className={cn("px-4 py-2.5", i > 0 && "border-l border-slate-100")}>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{label}</p>
+                {hint && <p className="text-xs text-slate-300 font-normal normal-case tracking-normal">{hint}</p>}
               </div>
             ))}
           </div>
@@ -247,8 +268,8 @@ export default function OkonomiPage() {
   );
 }
 
-function BigStat({ label, value, sub, green, warn }: {
-  label: string; value: string; sub?: string; green?: boolean; warn?: boolean;
+function BigStat({ label, value, sub, detail, green, warn }: {
+  label: string; value: string; sub?: string; detail?: string; green?: boolean; warn?: boolean;
 }) {
   return (
     <div className={cn("rounded-xl border px-4 py-3",
@@ -260,7 +281,8 @@ function BigStat({ label, value, sub, green, warn }: {
       <p className={cn("text-xl font-bold",
         warn ? "text-amber-700" : green ? "text-emerald-700" : "text-slate-900"
       )}>{value}</p>
-      {sub && <p className={cn("text-xs mt-0.5", warn ? "text-amber-500" : "text-slate-400")}>{sub}</p>}
+      {detail && <p className="text-xs text-slate-400 mt-0.5">{detail}</p>}
+      {sub && <p className={cn("text-xs mt-0.5 font-medium", warn ? "text-amber-600" : green ? "text-emerald-600" : "text-slate-500")}>{sub}</p>}
     </div>
   );
 }
@@ -295,7 +317,7 @@ function CaseRow({ userId, c, minutes, globalRate }: {
   };
 
   return (
-    <div className={cn("grid grid-cols-[1fr_110px_140px_140px_140px] hover:bg-slate-50/70 transition-colors", avvik && "bg-amber-50/30")}>
+    <div className={cn("grid grid-cols-[1fr_130px_140px_140px_140px] hover:bg-slate-50/70 transition-colors", avvik && "bg-amber-50/30")}>
       {/* Sak */}
       <div className="px-4 py-3 cursor-pointer min-w-0" onClick={() => router.push(`/cases/${c.id}`)}>
         <div className="flex items-start gap-1.5">
@@ -318,8 +340,16 @@ function CaseRow({ userId, c, minutes, globalRate }: {
       <div className="px-4 py-3 border-l border-slate-100">
         {brutto > 0 ? (
           <>
-            <p className="text-sm font-semibold text-slate-800">{formatNok(brutto)}</p>
-            {netto != null && <p className="text-xs font-medium text-emerald-600">{formatNok(netto)}</p>}
+            <div className="flex items-baseline gap-1.5">
+              <p className="text-sm font-semibold text-slate-800">{formatNok(brutto)}</p>
+              <span className="text-xs text-slate-300">brutto</span>
+            </div>
+            {netto != null && (
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-xs font-medium text-emerald-600">{formatNok(netto)}</p>
+                <span className="text-xs text-slate-300">netto</span>
+              </div>
+            )}
             <InlineRateEdit value={c.skattetrekk} globalRate={globalRate}
               onSave={async (v) => { await updateCase(userId, c.id, { skattetrekk: v }); toast.success("Oppdatert"); }}
             />
