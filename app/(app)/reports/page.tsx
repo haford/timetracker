@@ -7,7 +7,8 @@ import { useTimeEntries } from "@/hooks/useTimeEntries";
 import { useCategories } from "@/hooks/useCategories";
 import { Button } from "@/components/ui/button";
 import { CategoryBadge } from "@/components/CategoryBadge";
-import { Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Download, ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
 import {
   startOfDay, endOfDay,
   startOfWeek, endOfWeek,
@@ -46,6 +47,7 @@ export default function ReportsPage() {
   const [period, setPeriod] = useState<Period>("dag");
   const [anchor, setAnchor] = useState(new Date());
   const [view, setView] = useState<"poster" | "kategori">("poster");
+  const [hiddenCats, setHiddenCats] = useState<Set<string>>(new Set());
 
   const { start, end } = useMemo(() => {
     if (period === "dag") return { start: startOfDay(anchor), end: endOfDay(anchor) };
@@ -55,8 +57,13 @@ export default function ReportsPage() {
   }, [period, anchor]);
 
   const filtered = useMemo(
-    () => entries.filter((e) => isWithinInterval(e.date, { start, end })),
-    [entries, start, end]
+    () => entries.filter((e) => {
+      if (!isWithinInterval(e.date, { start, end })) return false;
+      if (hiddenCats.size === 0) return true;
+      const catId = cases.find((c) => c.id === e.caseId)?.categoryId ?? "__ingen__";
+      return !hiddenCats.has(catId);
+    }),
+    [entries, start, end, hiddenCats, cases]
   );
 
   const totalMinutes = filtered.reduce((sum, e) => sum + e.durationMinutes, 0);
@@ -120,7 +127,7 @@ export default function ReportsPage() {
         </Button>
       </div>
 
-      {/* Period + view tabs */}
+      {/* Period + view tabs + category filter */}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <div className="flex gap-1 p-1 rounded-xl bg-slate-100 w-fit">
           {(["dag", "uke", "måned", "år"] as Period[]).map((p) => (
@@ -154,6 +161,66 @@ export default function ReportsPage() {
             </button>
           ))}
         </div>
+
+        {/* Category filter */}
+        <Popover>
+          <PopoverTrigger className={cn(
+            "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium transition-colors border",
+            hiddenCats.size > 0
+              ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+              : "bg-slate-100 border-transparent text-slate-500 hover:text-slate-700"
+          )}>
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            {hiddenCats.size > 0
+              ? `${categories.length - hiddenCats.size} av ${categories.length} kategorier`
+              : "Kategorier"}
+          </PopoverTrigger>
+          <PopoverContent className="w-56 p-2" align="start">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-2 py-1.5">Vis kategorier</p>
+            {/* All toggle */}
+            <button
+              onClick={() => setHiddenCats(new Set())}
+              className={cn(
+                "w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm transition-colors",
+                hiddenCats.size === 0 ? "bg-slate-100 text-slate-900 font-medium" : "text-slate-500 hover:bg-slate-50"
+              )}
+            >
+              <span className="h-3 w-3 rounded-full border-2 border-slate-400 shrink-0" />
+              Alle kategorier
+            </button>
+            <div className="my-1 border-t border-slate-100" />
+            {categories.map((cat) => {
+              const hidden = hiddenCats.has(cat.id);
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => {
+                    setHiddenCats((prev) => {
+                      const next = new Set(prev);
+                      if (hidden) next.delete(cat.id);
+                      else next.add(cat.id);
+                      return next;
+                    });
+                  }}
+                  className={cn(
+                    "w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm transition-colors",
+                    hidden ? "text-slate-400 hover:bg-slate-50" : "text-slate-700 hover:bg-slate-50"
+                  )}
+                >
+                  <span
+                    className={cn("h-3 w-3 rounded-full shrink-0 transition-opacity", hidden && "opacity-30")}
+                    style={{ backgroundColor: cat.color }}
+                  />
+                  <span className={cn("flex-1 text-left", hidden && "line-through opacity-50")}>{cat.name}</span>
+                  {!hidden && <span className="text-xs text-slate-300">✓</span>}
+                </button>
+              );
+            })}
+            {categories.length === 0 && (
+              <p className="text-xs text-slate-400 px-2 py-1">Ingen kategorier opprettet</p>
+            )}
+          </PopoverContent>
+        </Popover>
       </div>
 
       {/* Navigator */}
