@@ -20,6 +20,7 @@ export interface Case {
   updatedAt: Date;
   startDate?: Date;
   deadline?: Date;
+  oppdragEpost?: string;
   contactName?: string;
   contactInfo?: string;
   notes?: string;

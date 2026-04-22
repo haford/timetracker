@@ -30,6 +30,7 @@ const schema = z.object({
   description: z.string(),
   categoryId: z.string(),
   status: z.enum(["ikke_startet", "påbegynt", "pause", "avsluttet"] as const),
+  oppdragEpost: z.string(),
   contactName: z.string(),
   contactInfo: z.string(),
   notes: z.string(),
@@ -50,6 +51,7 @@ type FormData = {
   description: string;
   categoryId: string;
   status: CaseStatus;
+  oppdragEpost: string;
   contactName: string;
   contactInfo: string;
   notes: string;
@@ -80,6 +82,7 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
       description: src?.description ?? "",
       categoryId: src?.categoryId ?? "",
       status: editCase?.status ?? "ikke_startet",
+      oppdragEpost: editCase?.oppdragEpost ?? "",
       contactName: src?.contactName ?? "",
       contactInfo: src?.contactInfo ?? "",
       notes: editCase?.notes ?? "",
@@ -102,6 +105,7 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
         description: data.description,
         categoryId: data.categoryId,
         status: data.status,
+        oppdragEpost: data.oppdragEpost || "",
         contactName: data.contactName || "",
         contactInfo: data.contactInfo || "",
         notes: data.notes || "",
@@ -217,6 +221,12 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
             </PopoverContent>
           </Popover>
         </div>
+      </div>
+
+      {/* Oppdrags-epost */}
+      <div className="space-y-1.5">
+        <Label htmlFor="oppdragEpost">Oppdrags-epost (lenke)</Label>
+        <Input id="oppdragEpost" placeholder="Lim inn lenke til e-post..." {...register("oppdragEpost")} />
       </div>
 
       {/* Kontaktperson */}

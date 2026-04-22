@@ -31,7 +31,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Clock, Pencil, Plus, Trash2, CalendarDays, User, Banknote } from "lucide-react";
+import { Clock, Pencil, Plus, Trash2, CalendarDays, User, Banknote, Mail } from "lucide-react";
 import { CaseDocuments } from "@/components/CaseDocuments";
 import { SignertAvtaleSection } from "@/components/SignertAvtaleSection";
 import { UtbetalingSection } from "@/components/UtbetalingSection";
@@ -136,6 +136,22 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
 
       {/* Ekstra info */}
       <div className="mb-6 rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+        {caseData.oppdragEpost && (
+          <div className="flex items-start gap-3 px-4 py-3">
+            <Mail className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-xs text-slate-400 mb-0.5">Oppdrags-epost</p>
+              <a
+                href={caseData.oppdragEpost}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-medium text-indigo-600 hover:underline break-all"
+              >
+                Åpne e-post
+              </a>
+            </div>
+          </div>
+        )}
         {caseData.contactName && (
           <div className="flex items-start gap-3 px-4 py-3">
             <User className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
