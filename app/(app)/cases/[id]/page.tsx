@@ -165,11 +165,37 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         {caseData.isPaid && (
           <div className="flex items-start gap-3 px-4 py-3">
             <Banknote className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-xs text-slate-400 mb-0.5">Honorar</p>
-              <div className="flex items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-slate-400 mb-1">Honorar</p>
+              {/* Matrise */}
+              {(caseData.honorarTimesats != null || caseData.honorarTimefaktor != null) && (
+                <div className="mb-2 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 text-xs space-y-1">
+                  {caseData.honorarTimesats != null && caseData.honorarTimefaktor != null && caseData.honorarAntallBesvarelser != null && (
+                    <p className="text-slate-500">
+                      {caseData.honorarTimesats.toLocaleString("nb-NO")} kr/t
+                      {" × "}{caseData.honorarTimefaktor} t
+                      {" × "}{caseData.honorarAntallBesvarelser} besv.
+                      {" = "}
+                      <span className="font-semibold text-slate-700">
+                        {Math.round(caseData.honorarTimesats * caseData.honorarTimefaktor * caseData.honorarAntallBesvarelser).toLocaleString("nb-NO")} kr
+                      </span>
+                    </p>
+                  )}
+                  {caseData.honorarTillegg && caseData.honorarTillegg.length > 0 && (
+                    <div className="space-y-0.5 pt-1 border-t border-slate-100">
+                      {caseData.honorarTillegg.map((t, i) => (
+                        <div key={i} className="flex justify-between text-slate-500">
+                          <span>{t.beskrivelse}</span>
+                          <span className="font-medium">+ {t.belop.toLocaleString("nb-NO")} kr</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="flex items-center gap-2 flex-wrap">
                 {caseData.honorar ? (
-                  <p className="text-sm font-medium text-slate-800">
+                  <p className="text-sm font-semibold text-slate-800">
                     {caseData.honorar.toLocaleString("nb-NO")} kr
                   </p>
                 ) : (

@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { addCase, updateCase } from "@/lib/firestore";
-import { STATUS_LABELS, type Case, type CaseStatus, type Category } from "@/lib/types";
+import { STATUS_LABELS, type Case, type CaseStatus, type Category, type HonorarTillegg } from "@/lib/types";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,11 +19,16 @@ import {
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, Plus, X, ArrowRight } from "lucide-react";
 import { format } from "date-fns";
 import { nb } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+
+const numPre = (v: unknown) =>
+  v === "" || v === null || v === undefined || (typeof v === "number" && isNaN(v))
+    ? undefined
+    : Number(String(v).replace(",", "."));
 
 const schema = z.object({
   title: z.string().min(1, "Tittel er påkrevd"),
@@ -35,15 +40,12 @@ const schema = z.object({
   contactInfo: z.string(),
   notes: z.string(),
   isPaid: z.boolean(),
-  honorar: z.preprocess(
-    (v) => (v === "" || v === null || v === undefined || (typeof v === "number" && isNaN(v)) ? undefined : Number(String(v).replace(",", "."))),
-    z.number().min(0).optional()
-  ),
+  honorarTimesats: z.preprocess(numPre, z.number().min(0).optional()),
+  honorarTimefaktor: z.preprocess(numPre, z.number().min(0).optional()),
+  honorarAntallBesvarelser: z.preprocess(numPre, z.number().min(0).optional()),
+  honorar: z.preprocess(numPre, z.number().min(0).optional()),
   honorarPaid: z.boolean(),
-  skattetrekk: z.preprocess(
-    (v) => (v === "" || v === null || v === undefined || (typeof v === "number" && isNaN(v)) ? undefined : Number(String(v).replace(",", "."))),
-    z.number().min(0).max(100).optional()
-  ),
+  skattetrekk: z.preprocess(numPre, z.number().min(0).max(100).optional()),
 });
 
 type FormData = {
@@ -56,10 +58,17 @@ type FormData = {
   contactInfo: string;
   notes: string;
   isPaid: boolean;
+  honorarTimesats?: number;
+  honorarTimefaktor?: number;
+  honorarAntallBesvarelser?: number;
   honorar?: number;
   honorarPaid: boolean;
   skattetrekk?: number;
 };
+
+function formatNok(n: number) {
+  return new Intl.NumberFormat("nb-NO", { maximumFractionDigits: 0 }).format(n) + " kr";
+}
 
 interface CaseFormProps {
   userId: string;
@@ -73,6 +82,7 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
   const src = editCase ?? templateCase;
   const [startDate, setStartDate] = useState<Date | undefined>(editCase?.startDate);
   const [deadline, setDeadline] = useState<Date | undefined>(editCase?.deadline);
+  const [tillegg, setTillegg] = useState<HonorarTillegg[]>(editCase?.honorarTillegg ?? []);
   const [saving, setSaving] = useState(false);
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
@@ -87,6 +97,9 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
       contactInfo: src?.contactInfo ?? "",
       notes: editCase?.notes ?? "",
       isPaid: src?.isPaid ?? false,
+      honorarTimesats: src?.honorarTimesats,
+      honorarTimefaktor: src?.honorarTimefaktor,
+      honorarAntallBesvarelser: src?.honorarAntallBesvarelser,
       honorar: src?.honorar,
       honorarPaid: editCase?.honorarPaid ?? false,
       skattetrekk: src?.skattetrekk,
@@ -96,6 +109,31 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
   const status = watch("status");
   const categoryId = watch("categoryId");
   const isPaid = watch("isPaid");
+  const timesats = watch("honorarTimesats");
+  const timefaktor = watch("honorarTimefaktor");
+  const antall = watch("honorarAntallBesvarelser");
+  const honorar = watch("honorar");
+
+  const basisHonorar =
+    timesats != null && timefaktor != null && antall != null
+      ? Math.round(timesats * timefaktor * antall)
+      : null;
+  const tilleggSum = tillegg.reduce((s, t) => s + (t.belop || 0), 0);
+  const beregnetTotal = basisHonorar != null ? basisHonorar + tilleggSum : null;
+
+  const isManuallyOverridden =
+    beregnetTotal != null && honorar != null && honorar !== beregnetTotal;
+
+  const addTillegg = () =>
+    setTillegg((prev) => [...prev, { beskrivelse: "", belop: 0 }]);
+
+  const removeTillegg = (i: number) =>
+    setTillegg((prev) => prev.filter((_, idx) => idx !== i));
+
+  const updateTillegg = (i: number, field: keyof HonorarTillegg, value: string | number) =>
+    setTillegg((prev) =>
+      prev.map((t, idx) => (idx === i ? { ...t, [field]: value } : t))
+    );
 
   const onSubmit = async (data: FormData) => {
     setSaving(true);
@@ -114,8 +152,14 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
       };
       if (startDate) payload.startDate = startDate;
       if (deadline) payload.deadline = deadline;
-      if (data.isPaid && data.honorar) payload.honorar = data.honorar;
-      if (data.isPaid && data.skattetrekk != null) payload.skattetrekk = data.skattetrekk;
+      if (data.isPaid) {
+        if (data.honorarTimesats != null) payload.honorarTimesats = data.honorarTimesats;
+        if (data.honorarTimefaktor != null) payload.honorarTimefaktor = data.honorarTimefaktor;
+        if (data.honorarAntallBesvarelser != null) payload.honorarAntallBesvarelser = data.honorarAntallBesvarelser;
+        if (tillegg.length > 0) payload.honorarTillegg = tillegg;
+        if (data.honorar != null) payload.honorar = data.honorar;
+        if (data.skattetrekk != null) payload.skattetrekk = data.skattetrekk;
+      }
       if (editCase) {
         await updateCase(userId, editCase.id, payload as Parameters<typeof updateCase>[2]);
         toast.success("Sak oppdatert");
@@ -266,8 +310,136 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
 
         {isPaid && (
           <>
+            {/* Matrise */}
+            <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-3">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Honorarmatrise</p>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <Label htmlFor="honorarTimesats" className="text-xs">Timesats</Label>
+                  <div className="relative">
+                    <Input
+                      id="honorarTimesats"
+                      type="number"
+                      min={0}
+                      step="1"
+                      placeholder="0"
+                      className="pr-8 text-sm h-8"
+                      {...register("honorarTimesats")}
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">kr/t</span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="honorarTimefaktor" className="text-xs">Timer / besv.</Label>
+                  <div className="relative">
+                    <Input
+                      id="honorarTimefaktor"
+                      type="number"
+                      min={0}
+                      step="0.25"
+                      placeholder="0"
+                      className="pr-5 text-sm h-8"
+                      {...register("honorarTimefaktor")}
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">t</span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="honorarAntallBesvarelser" className="text-xs">Ant. besv.</Label>
+                  <Input
+                    id="honorarAntallBesvarelser"
+                    type="number"
+                    min={0}
+                    step="1"
+                    placeholder="0"
+                    className="text-sm h-8"
+                    {...register("honorarAntallBesvarelser")}
+                  />
+                </div>
+              </div>
+
+              {basisHonorar != null && (
+                <div className="text-xs text-slate-500 flex items-center gap-1">
+                  <span>{timesats} kr/t × {timefaktor} t × {antall} besv.</span>
+                  <span className="text-slate-300">=</span>
+                  <span className="font-semibold text-slate-700">{formatNok(basisHonorar)}</span>
+                </div>
+              )}
+
+              {/* Tillegg */}
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-slate-500">Tillegg</p>
+                  <button
+                    type="button"
+                    onClick={addTillegg}
+                    className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                  >
+                    <Plus className="h-3 w-3" /> Legg til
+                  </button>
+                </div>
+                {tillegg.map((t, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Input
+                      value={t.beskrivelse}
+                      onChange={(e) => updateTillegg(i, "beskrivelse", e.target.value)}
+                      placeholder="Beskrivelse"
+                      className="flex-1 text-sm h-8"
+                    />
+                    <div className="relative w-28 shrink-0">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={t.belop || ""}
+                        onChange={(e) => updateTillegg(i, "belop", Number(e.target.value))}
+                        placeholder="0"
+                        className="pr-7 text-sm h-8"
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">kr</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeTillegg(i)}
+                      className="text-slate-300 hover:text-red-500 transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {tillegg.length > 0 && (
+                  <p className="text-xs text-slate-400 text-right">
+                    Tillegg totalt: <span className="font-medium text-slate-600">{formatNok(tilleggSum)}</span>
+                  </p>
+                )}
+              </div>
+
+              {/* Beregnet total + bruk-knapp */}
+              {beregnetTotal != null && (
+                <div className="flex items-center justify-between pt-2 border-t border-slate-200">
+                  <div>
+                    <p className="text-xs text-slate-400">Beregnet honorar</p>
+                    <p className="text-sm font-bold text-slate-800">{formatNok(beregnetTotal)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setValue("honorar", beregnetTotal)}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
+                  >
+                    Bruk som honorar <ArrowRight className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Honorar-felt */}
             <div className="space-y-1.5">
-              <Label htmlFor="honorar">Honorar (kr)</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="honorar">Honorar (kr)</Label>
+                {isManuallyOverridden && (
+                  <span className="text-xs text-amber-500">Manuelt overstyrt</span>
+                )}
+              </div>
               <Input
                 id="honorar"
                 type="number"
@@ -277,6 +449,7 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
                 {...register("honorar")}
               />
             </div>
+
             <div className="space-y-1.5">
               <Label htmlFor="skattetrekk">Skattetrekk for denne saken (%)</Label>
               <div className="relative">
@@ -292,6 +465,7 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">%</span>
               </div>
             </div>
+
             <div className="flex items-center gap-3">
               <input
                 type="checkbox"

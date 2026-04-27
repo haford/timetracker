@@ -10,6 +10,11 @@ export interface Category {
   color: string;
 }
 
+export interface HonorarTillegg {
+  beskrivelse: string;
+  belop: number;
+}
+
 export interface Case {
   id: string;
   title: string;
@@ -25,6 +30,10 @@ export interface Case {
   contactInfo?: string;
   notes?: string;
   isPaid?: boolean;
+  honorarTimesats?: number;
+  honorarTimefaktor?: number;
+  honorarAntallBesvarelser?: number;
+  honorarTillegg?: HonorarTillegg[];
   honorar?: number;
   honorarPaid?: boolean;
   honorarClaimSent?: boolean;
