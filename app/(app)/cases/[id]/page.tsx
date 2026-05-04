@@ -12,7 +12,7 @@ import { CategoryBadge } from "@/components/CategoryBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, calcPace } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -31,7 +31,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Clock, Pencil, Plus, Trash2, CalendarDays, User, Banknote, Mail } from "lucide-react";
+import { Clock, Pencil, Plus, Trash2, CalendarDays, User, Banknote, Mail, Target } from "lucide-react";
 import { CaseDocuments } from "@/components/CaseDocuments";
 import { SignertAvtaleSection } from "@/components/SignertAvtaleSection";
 import { UtbetalingSection } from "@/components/UtbetalingSection";
@@ -94,6 +94,9 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
   if (!caseData) return <div className="p-6">Sak ikke funnet</div>;
 
   const category = categories.find((c) => c.id === caseData.categoryId);
+  const pace = caseData.status !== "avsluttet"
+    ? calcPace(caseData.honorarAntallBesvarelser, caseData.deadline)
+    : null;
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
@@ -159,6 +162,32 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
               <p className="text-xs text-slate-400 mb-0.5">Kontaktperson</p>
               <p className="text-sm font-medium text-slate-800">{caseData.contactName}</p>
               {caseData.contactInfo && <p className="text-xs text-slate-500">{caseData.contactInfo}</p>}
+            </div>
+          </div>
+        )}
+        {pace && (
+          <div className="flex items-start gap-3 px-4 py-3">
+            <Target className={cn("h-4 w-4 mt-0.5 shrink-0",
+              pace.kind === "overdue" ? "text-red-500"
+                : pace.kind === "today" ? "text-amber-500"
+                : "text-indigo-500"
+            )} />
+            <div>
+              <p className="text-xs text-slate-400 mb-0.5">Tempo for å rekke fristen</p>
+              {pace.kind === "overdue" ? (
+                <p className="text-sm font-medium text-red-600">Frist utgått</p>
+              ) : pace.kind === "today" ? (
+                <p className="text-sm font-medium text-amber-700">
+                  I dag: alle {pace.total} besvarelser
+                </p>
+              ) : (
+                <p className="text-sm font-medium text-slate-800">
+                  {pace.perDay} besvarelser/dag
+                  <span className="text-xs text-slate-400 font-normal ml-1.5">
+                    ({pace.daysLeft} dag{pace.daysLeft !== 1 ? "er" : ""} igjen, 1 dags margin)
+                  </span>
+                </p>
+              )}
             </div>
           </div>
         )}

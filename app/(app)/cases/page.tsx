@@ -13,7 +13,7 @@ import { CategoryBadge } from "@/components/CategoryBadge";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
+import { cn, calcPace } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Plus, Search, MoreVertical, Pencil, Trash2, Clock,
-  ArrowUpDown, CalendarDays, LayoutGrid, List, Copy, User,
+  ArrowUpDown, CalendarDays, LayoutGrid, List, Copy, User, Target,
 } from "lucide-react";
 import { format, isPast, isToday } from "date-fns";
 import { nb } from "date-fns/locale";
@@ -300,6 +300,31 @@ function CaseMenu({ c, router, onDelete }: {
   );
 }
 
+// ── Pace badge (besvarelser/dag for å rekke fristen) ─────────
+function PaceBadge({ c }: { c: Case }) {
+  if (c.status === "avsluttet") return null;
+  const pace = calcPace(c.honorarAntallBesvarelser, c.deadline);
+  if (!pace) return null;
+  if (pace.kind === "overdue") return null; // already shown via "utgått" label
+
+  const text =
+    pace.kind === "today"
+      ? `I dag: ${pace.total}`
+      : `${pace.perDay}/dag`;
+
+  const color =
+    pace.kind === "today"
+      ? "text-amber-700 bg-amber-50 border-amber-200"
+      : "text-indigo-700 bg-indigo-50 border-indigo-200";
+
+  return (
+    <span className={cn("inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-md border", color)}>
+      <Target className="h-3 w-3" />
+      {text}
+    </span>
+  );
+}
+
 // ── Card view ────────────────────────────────────────────────
 function CaseCard({ c, router, minutesByCaseId, categories, onDelete }: {
   c: Case;
@@ -368,12 +393,15 @@ function CaseCard({ c, router, minutesByCaseId, categories, onDelete }: {
               </span>
             )}
           </div>
-          {totalMin > 0 && (
-            <span className="flex items-center gap-1 font-medium text-slate-500">
-              <Clock className="h-3 w-3" />
-              {minutesToHours(totalMin)}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            <PaceBadge c={c} />
+            {totalMin > 0 && (
+              <span className="flex items-center gap-1 font-medium text-slate-500">
+                <Clock className="h-3 w-3" />
+                {minutesToHours(totalMin)}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </Link>
@@ -424,6 +452,7 @@ function CaseRow({ c, router, minutesByCaseId, categories, onDelete }: {
               {format(c.startDate, "d. MMM yyyy", { locale: nb })}
             </span>
           )}
+          <PaceBadge c={c} />
         </div>
       </div>
       <div className="flex items-center gap-3 shrink-0">
