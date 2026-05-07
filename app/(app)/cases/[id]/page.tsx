@@ -310,10 +310,15 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
               {entries.map((e) => (
                 <div key={e.id} className="flex items-center justify-between py-3">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium">
                         {format(e.date, "d. MMMM yyyy", { locale: nb })}
                       </span>
+                      {e.startTime && e.endTime && (
+                        <span className="text-xs text-slate-500">
+                          {e.startTime}–{e.endTime}
+                        </span>
+                      )}
                       <span className="text-sm font-bold text-slate-700">
                         {minutesToHours(e.durationMinutes)}
                       </span>
