@@ -55,6 +55,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
   const [caseData, setCaseData] = useState<Case | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
+  const [newProgress, setNewProgress] = useState("");
   const router = useRouter();
 
   useEffect(() => {
@@ -79,6 +80,20 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
     setDeleteEntryId(null);
   };
 
+  const handleAddProgress = async () => {
+    if (!user || !caseData || !newProgress) return;
+    const antall = parseInt(newProgress, 10);
+    if (isNaN(antall) || antall <= 0) {
+      toast.error("Vennligst angi et gyldig tall");
+      return;
+    }
+    const updated = [...(caseData.gradeProgress ?? []), { antallRettet: antall, loggedAt: new Date() }];
+    await updateCase(user.uid, id, { gradeProgress: updated });
+    setCaseData((prev) => prev ? { ...prev, gradeProgress: updated } : prev);
+    setNewProgress("");
+    toast.success("Progresjon logget");
+  };
+
   const totalMin = entries.reduce((sum, e) => sum + e.durationMinutes, 0);
 
   if (loading) {
@@ -95,7 +110,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
 
   const category = categories.find((c) => c.id === caseData.categoryId);
   const pace = caseData.status !== "avsluttet"
-    ? calcPace(caseData.honorarAntallBesvarelser, caseData.deadline)
+    ? calcPace(caseData.honorarAntallBesvarelser, caseData.deadline, caseData.gradeProgress)
     : null;
 
   return (
@@ -351,6 +366,46 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
           )}
         </CardContent>
       </Card>
+
+      {/* Retteprogress */}
+      {caseData.isPaid && caseData.honorarAntallBesvarelser && caseData.honorarAntallBesvarelser > 1 && (
+        <Card className="mt-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Retteprogress</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {caseData.gradeProgress && caseData.gradeProgress.length > 0 && (
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Totalt rettet: <span className="font-semibold text-slate-700">{caseData.gradeProgress.reduce((sum, p) => sum + p.antallRettet, 0)} / {caseData.honorarAntallBesvarelser} besvarelser</span>
+                </p>
+                <div className="rounded-lg bg-slate-50 p-3 space-y-2">
+                  {caseData.gradeProgress.map((p, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="text-slate-500">{format(p.loggedAt, "d. MMM HH:mm", { locale: nb })}</span>
+                      <span className="font-medium text-slate-700">{p.antallRettet} stk</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="flex gap-2 pt-2">
+              <Input
+                type="number"
+                min="1"
+                placeholder="Antall rettet i dag"
+                value={newProgress}
+                onChange={(e) => setNewProgress(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && handleAddProgress()}
+                className="flex-1"
+              />
+              <Button onClick={handleAddProgress} size="sm">
+                Legg inn
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Dokumenter */}
       {user && (

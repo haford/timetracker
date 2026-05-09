@@ -15,6 +15,11 @@ export interface HonorarTillegg {
   belop: number;
 }
 
+export interface GradeProgress {
+  antallRettet: number;
+  loggedAt: Date;
+}
+
 export interface Case {
   id: string;
   title: string;
@@ -34,6 +39,7 @@ export interface Case {
   honorarTimefaktor?: number;
   honorarAntallBesvarelser?: number;
   honorarTillegg?: HonorarTillegg[];
+  gradeProgress?: GradeProgress[];
   honorar?: number;
   honorarPaid?: boolean;
   honorarClaimSent?: boolean;

@@ -106,6 +106,10 @@ const caseFromDoc = (d: { id: string; data: () => Record<string, unknown> }): Ca
     lonnsslippStoragePath: (data.lonnsslippStoragePath as string) || undefined,
     lonnsslippDownloadUrl: (data.lonnsslippDownloadUrl as string) || undefined,
     lonnsslippNavn: (data.lonnsslippNavn as string) || undefined,
+    gradeProgress: ((data.gradeProgress as Array<{antallRettet: number; loggedAt: Timestamp}>) || []).map(p => ({
+      antallRettet: p.antallRettet as number,
+      loggedAt: toDate(p.loggedAt as Timestamp),
+    })) || undefined,
   };
 };
 
@@ -153,6 +157,13 @@ export const updateCase = (
   if ("honorarUtbetaltDato" in data)
     update.honorarUtbetaltDato = data.honorarUtbetaltDato
       ? Timestamp.fromDate(data.honorarUtbetaltDato) : null;
+
+  if ("gradeProgress" in data && data.gradeProgress) {
+    update.gradeProgress = data.gradeProgress.map(p => ({
+      antallRettet: p.antallRettet,
+      loggedAt: Timestamp.fromDate(p.loggedAt),
+    }));
+  }
 
   // Remove undefined values — Firestore rejects them
   Object.keys(update).forEach((k) => update[k] === undefined && delete update[k]);

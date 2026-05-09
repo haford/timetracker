@@ -303,7 +303,7 @@ function CaseMenu({ c, router, onDelete }: {
 // ── Pace badge (besvarelser/dag for å rekke fristen) ─────────
 function PaceBadge({ c }: { c: Case }) {
   if (c.status === "avsluttet") return null;
-  const pace = calcPace(c.honorarAntallBesvarelser, c.deadline);
+  const pace = calcPace(c.honorarAntallBesvarelser, c.deadline, c.gradeProgress);
   if (!pace) return null;
   if (pace.kind === "overdue") return null; // already shown via "utgått" label
 
