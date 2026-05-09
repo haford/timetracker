@@ -12,6 +12,7 @@ import { CategoryBadge } from "@/components/CategoryBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn, calcPace } from "@/lib/utils";
 import {
   Select,
