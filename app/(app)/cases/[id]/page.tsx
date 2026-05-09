@@ -380,7 +380,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                   Totalt rettet: <span className="font-semibold text-slate-700">{caseData.gradeProgress.reduce((sum, p) => sum + p.antallRettet, 0)} / {caseData.honorarAntallBesvarelser} besvarelser</span>
                 </p>
                 <div className="rounded-lg bg-slate-50 p-3 space-y-2">
-                  {caseData.gradeProgress.map((p, i) => (
+                  {[...caseData.gradeProgress].reverse().map((p, i) => (
                     <div key={i} className="flex items-center justify-between text-xs">
                       <span className="text-slate-500">{format(p.loggedAt, "d. MMM HH:mm", { locale: nb })}</span>
                       <span className="font-medium text-slate-700">{p.antallRettet} stk</span>
