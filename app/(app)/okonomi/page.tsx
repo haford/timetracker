@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { Case } from "@/lib/types";
 
-type Filter = "alle" | "gjenstår" | "avvik";
+type Filter = "alle" | "gjenstår" | "venter_betaling" | "avvik";
 
 function minutesToHours(min: number): string {
   const h = Math.floor(min / 60);
@@ -164,6 +164,7 @@ export default function OkonomiPage() {
 
   const filtered = useMemo(() => {
     if (filter === "gjenstår") return paidCases.filter((c) => !c.honorarClaimSent || !c.honorarPaid);
+    if (filter === "venter_betaling") return paidCases.filter((c) => c.status === "avsluttet" && c.honorarClaimSent && !c.honorarPaid);
     if (filter === "avvik") return paidCases.filter((c) => hasAvvik(c));
     return paidCases;
   }, [paidCases, filter]);
@@ -227,6 +228,7 @@ export default function OkonomiPage() {
         {([
           ["alle", "Alle"],
           ["gjenstår", "Gjenstår"],
+          ["venter_betaling", "Venter betaling"],
           ["avvik", `Avvik${totals.avvikCount > 0 ? ` (${totals.avvikCount})` : ""}`],
         ] as [Filter, string][]).map(([f, label]) => (
           <button key={f} onClick={() => setFilter(f)}
