@@ -169,6 +169,18 @@ export default function OkonomiPage() {
     return paidCases;
   }, [paidCases, filter]);
 
+  const filteredSum = useMemo(() => {
+    let brutto = 0;
+    let netto = 0;
+    filtered.forEach(c => {
+      const b = c.honorar ?? 0;
+      brutto += b;
+      const rate = c.skattetrekk ?? globalRate;
+      netto += rate != null ? nettoCalc(b, rate) : b;
+    });
+    return { brutto, netto };
+  }, [filtered, globalRate]);
+
   if (loading) return <div className="p-6 text-slate-400 text-sm">Laster...</div>;
 
   return (
@@ -263,6 +275,26 @@ export default function OkonomiPage() {
             {filtered.map((c) => (
               <CaseRow key={c.id} userId={user!.uid} c={c} minutes={minutesByCaseId[c.id] ?? 0} globalRate={globalRate} />
             ))}
+            {filtered.length > 0 && (
+              <div className="grid grid-cols-[1fr_130px_140px_140px_140px] bg-slate-50 border-t border-slate-200">
+                <div className="px-4 py-3 flex items-center justify-end">
+                  <span className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Sum vist</span>
+                </div>
+                <div className="px-4 py-3 border-l border-slate-200">
+                  <div className="flex items-baseline gap-1.5">
+                    <p className="text-sm font-bold text-slate-900">{formatNok(filteredSum.brutto)}</p>
+                    <span className="text-xs text-slate-400">brutto</span>
+                  </div>
+                  {filteredSum.netto !== filteredSum.brutto && (
+                    <div className="flex items-baseline gap-1.5">
+                      <p className="text-xs font-semibold text-emerald-600">{formatNok(filteredSum.netto)}</p>
+                      <span className="text-xs text-slate-400">netto</span>
+                    </div>
+                  )}
+                </div>
+                <div className="col-span-3 border-l border-slate-200 bg-slate-50/50"></div>
+              </div>
+            )}
           </div>
         </div>
       )}
