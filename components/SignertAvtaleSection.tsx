@@ -17,11 +17,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { CheckCircle2, Upload, Download, Trash2, FileSignature, Loader2, X } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { CheckCircle2, Upload, Download, Trash2, FileSignature, Loader2, X, Share2 } from "lucide-react";
 import { format } from "date-fns";
 import { nb } from "date-fns/locale";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useCases } from "@/hooks/useCases";
 
 interface Props {
   userId: string;
@@ -36,9 +45,48 @@ export function SignertAvtaleSection({ userId, caseData, onUpdate, compact = fal
   const [progress, setProgress] = useState(0);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [selectedCaseIds, setSelectedCaseIds] = useState<Set<string>>(new Set());
+  const [copying, setCopying] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { cases: allCases } = useCases(userId);
 
   const isSigned = caseData.signertOgInnsendt;
+
+  const otherCases = allCases.filter((c) => c.id !== caseData.id);
+
+  const toggleCaseSelection = (id: string) => {
+    setSelectedCaseIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleCopyToOtherCases = async () => {
+    if (selectedCaseIds.size === 0) return;
+    setCopying(true);
+    try {
+      const payload: Partial<Case> = {
+        signertOgInnsendt: true,
+        signertOgInnsendtDate: caseData.signertOgInnsendtDate,
+        signertAvtaleDownloadUrl: caseData.signertAvtaleDownloadUrl,
+        signertAvtaleStoragePath: caseData.signertAvtaleStoragePath,
+        signertAvtaleNavn: caseData.signertAvtaleNavn,
+      };
+      await Promise.all(
+        Array.from(selectedCaseIds).map((id) => updateCase(userId, id, payload))
+      );
+      toast.success(`Arbeidsavtale tilordnet ${selectedCaseIds.size} sak${selectedCaseIds.size !== 1 ? "er" : ""}`);
+      setCopyDialogOpen(false);
+      setSelectedCaseIds(new Set());
+    } catch {
+      toast.error("Noe gikk galt ved tilordning");
+    } finally {
+      setCopying(false);
+    }
+  };
 
   const markSigned = async (date: Date) => {
     setSaving(true);
@@ -181,6 +229,19 @@ export function SignertAvtaleSection({ userId, caseData, onUpdate, compact = fal
               </button>
             </div>
 
+            {/* Tilordne til flere saker */}
+            <div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                onClick={() => { setSelectedCaseIds(new Set()); setCopyDialogOpen(true); }}
+              >
+                <Share2 className="h-3 w-3 mr-1.5" />
+                Tilordne til flere saker
+              </Button>
+            </div>
+
             {/* Fil */}
             <div className="flex items-center gap-2">
               {caseData.signertAvtaleDownloadUrl ? (
@@ -231,6 +292,69 @@ export function SignertAvtaleSection({ userId, caseData, onUpdate, compact = fal
       </div>
 
       <RemoveDialog open={confirmRemove} onOpenChange={setConfirmRemove} onConfirm={handleRemoveAll} saving={saving} />
+
+      {/* Kopier arbeidsavtale til andre saker */}
+      <Dialog open={copyDialogOpen} onOpenChange={setCopyDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Tilordne avtale til flere saker</DialogTitle>
+            <DialogDescription>
+              Velg sakene som skal få samme arbeidsavtale{caseData.signertAvtaleNavn ? ` («${caseData.signertAvtaleNavn}»)` : ""}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 rounded-lg border border-slate-200">
+            {otherCases.length === 0 ? (
+              <p className="text-sm text-slate-500 text-center py-6">Ingen andre saker</p>
+            ) : (
+              otherCases.map((c) => (
+                <label key={c.id} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-slate-50 select-none">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    checked={selectedCaseIds.has(c.id)}
+                    onChange={() => toggleCaseSelection(c.id)}
+                  />
+                  <span className="text-sm text-slate-800 truncate">{c.title}</span>
+                  {c.signertOgInnsendt && (
+                    <span className="ml-auto shrink-0 text-xs text-green-600 flex items-center gap-0.5">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Har avtale
+                    </span>
+                  )}
+                </label>
+              ))
+            )}
+          </div>
+          {otherCases.length > 0 && (
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <button
+                className="hover:text-indigo-600"
+                onClick={() => setSelectedCaseIds(new Set(otherCases.map((c) => c.id)))}
+              >
+                Velg alle
+              </button>
+              <span>·</span>
+              <button
+                className="hover:text-indigo-600"
+                onClick={() => setSelectedCaseIds(new Set())}
+              >
+                Fjern alle
+              </button>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCopyDialogOpen(false)} disabled={copying}>
+              Avbryt
+            </Button>
+            <Button
+              onClick={handleCopyToOtherCases}
+              disabled={selectedCaseIds.size === 0 || copying}
+            >
+              {copying ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Tilordner...</> : `Tilordne til ${selectedCaseIds.size} sak${selectedCaseIds.size !== 1 ? "er" : ""}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
