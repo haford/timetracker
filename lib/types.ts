@@ -1,5 +1,13 @@
 export type CaseStatus = "ikke_startet" | "påbegynt" | "pause" | "karakter_satt" | "avsluttet";
 
+export type SaksType = "skoleeksamen" | "kursoppgave" | "masteroppgave";
+
+export const SAKSTYPE_LABELS: Record<SaksType, string> = {
+  skoleeksamen: "Skoleeksamen",
+  kursoppgave: "Obligatorisk kursoppgave – kommentering",
+  masteroppgave: "Masteroppgave",
+};
+
 export interface UserSettings {
   globalSkattetrekk?: number;
 }
@@ -35,6 +43,7 @@ export interface Case {
   id: string;
   title: string;
   description: string;
+  sakstype?: SaksType;
   categoryId: string;
   status: CaseStatus;
   createdAt: Date;

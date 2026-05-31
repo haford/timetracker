@@ -6,7 +6,7 @@ import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { addCase, updateCase } from "@/lib/firestore";
-import { STATUS_LABELS, type Case, type CaseStatus, type Category, type HonorarTillegg, type Delfrist, type Mote } from "@/lib/types";
+import { STATUS_LABELS, SAKSTYPE_LABELS, type Case, type CaseStatus, type SaksType, type Category, type HonorarTillegg, type Delfrist, type Mote } from "@/lib/types";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,6 +35,7 @@ const schema = z.object({
   description: z.string(),
   categoryId: z.string(),
   status: z.enum(["ikke_startet", "påbegynt", "pause", "karakter_satt", "avsluttet"] as const),
+  sakstype: z.string().optional(),
   oppdragEpost: z.string(),
   contactName: z.string(),
   contactInfo: z.string(),
@@ -53,6 +54,7 @@ type FormData = {
   description: string;
   categoryId: string;
   status: CaseStatus;
+  sakstype?: SaksType;
   oppdragEpost: string;
   contactName: string;
   contactInfo: string;
@@ -94,6 +96,7 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
       description: src?.description ?? "",
       categoryId: src?.categoryId ?? "",
       status: editCase?.status ?? "ikke_startet",
+      sakstype: src?.sakstype,
       oppdragEpost: editCase?.oppdragEpost ?? "",
       contactName: src?.contactName ?? "",
       contactInfo: src?.contactInfo ?? "",
@@ -110,6 +113,7 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
 
   const status = watch("status");
   const categoryId = watch("categoryId");
+  const sakstype = watch("sakstype");
   const isPaid = watch("isPaid");
   const timesats = watch("honorarTimesats");
   const timefaktor = watch("honorarTimefaktor");
@@ -175,6 +179,7 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
       };
       if (startDate) payload.startDate = startDate;
       if (deadline) payload.deadline = deadline;
+      payload.sakstype = data.sakstype || null;
       payload.delfrister = delfrister;
       payload.moter = moter;
       if (data.isPaid) {
@@ -252,6 +257,25 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      {/* Sakstype (sensur) */}
+      <div className="space-y-1.5">
+        <Label>Sakstype</Label>
+        <Select
+          value={sakstype ?? ""}
+          onValueChange={(v) => setValue("sakstype", (v || undefined) as SaksType | undefined)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Velg sakstype..." />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Ingen / annet</SelectItem>
+            {(Object.keys(SAKSTYPE_LABELS) as SaksType[]).map((t) => (
+              <SelectItem key={t} value={t}>{SAKSTYPE_LABELS[t]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Sak opprettet + Frist */}

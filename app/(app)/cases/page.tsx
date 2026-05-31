@@ -8,7 +8,7 @@ import { useCases } from "@/hooks/useCases";
 import { useCategories } from "@/hooks/useCategories";
 import { useTimeEntries } from "@/hooks/useTimeEntries";
 import { deleteCase } from "@/lib/firestore";
-import { STATUS_LABELS, STATUS_COLORS, type CaseStatus } from "@/lib/types";
+import { STATUS_LABELS, STATUS_COLORS, SAKSTYPE_LABELS, type CaseStatus, type SaksType } from "@/lib/types";
 import { CategoryBadge } from "@/components/CategoryBadge";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -71,6 +71,7 @@ export default function CasesPage() {
   const [view, setView] = useState<ViewMode>("kort");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("alle");
+  const [sakstypeFilter, setSakstypeFilter] = useState<string>("alle");
   const [sortBy, setSortBy] = useState<SortKey>("oppdatert");
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -91,7 +92,8 @@ export default function CasesPage() {
         c.title.toLowerCase().includes(search.toLowerCase()) ||
         (c.description ?? "").toLowerCase().includes(search.toLowerCase());
       const matchCat = categoryFilter === "alle" || c.categoryId === categoryFilter;
-      return matchTab && matchSearch && matchCat;
+      const matchSakstype = sakstypeFilter === "alle" || c.sakstype === sakstypeFilter;
+      return matchTab && matchSearch && matchCat && matchSakstype;
     })
     .sort((a, b) => {
       if (sortBy === "frist") {
@@ -172,6 +174,21 @@ export default function CasesPage() {
             </SelectContent>
           </Select>
         )}
+        <Select value={sakstypeFilter} onValueChange={(v) => setSakstypeFilter(v ?? "alle")}>
+          <SelectTrigger className="w-52">
+            <span className="text-sm truncate">
+              {sakstypeFilter === "alle"
+                ? "Alle sakstyper"
+                : SAKSTYPE_LABELS[sakstypeFilter as SaksType] ?? "Alle sakstyper"}
+            </span>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="alle">Alle sakstyper</SelectItem>
+            {(Object.keys(SAKSTYPE_LABELS) as SaksType[]).map((t) => (
+              <SelectItem key={t} value={t}>{SAKSTYPE_LABELS[t]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={sortBy} onValueChange={(v) => v && setSortBy(v as SortKey)}>
           <SelectTrigger className="w-44">
             <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 mr-1.5" />
@@ -359,7 +376,11 @@ function CaseCard({ c, router, minutesByCaseId, categories, onDelete }: {
               {STATUS_LABELS[c.status]}
             </Badge>
             {cat && <CategoryBadge category={cat} small />}
-          </div>
+            {c.sakstype && (
+              <Badge className="text-xs bg-sky-50 text-sky-700 border-sky-200" variant="outline">
+                {SAKSTYPE_LABELS[c.sakstype]}
+              </Badge>
+            )}
           <div onClick={(e) => e.preventDefault()}>
             <CaseMenu c={c} router={router} onDelete={onDelete} />
           </div>
@@ -473,7 +494,11 @@ function CaseRow({ c, router, minutesByCaseId, categories, onDelete }: {
             {STATUS_LABELS[c.status]}
           </Badge>
           {cat && <CategoryBadge category={cat} small />}
-        </div>
+          {c.sakstype && (
+            <Badge className="text-xs shrink-0 bg-sky-50 text-sky-700 border-sky-200" variant="outline">
+              {SAKSTYPE_LABELS[c.sakstype]}
+            </Badge>
+          )}
         <div className="flex items-center gap-3 mt-0.5 flex-wrap">
           {c.description && (
             <span className="text-xs text-slate-400 truncate max-w-xs">{c.description}</span>

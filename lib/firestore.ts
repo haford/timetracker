@@ -74,6 +74,7 @@ const caseFromDoc = (d: { id: string; data: () => Record<string, unknown> }): Ca
     description: data.description as string,
     categoryId: data.categoryId as string,
     status: data.status as CaseStatus,
+    sakstype: (data.sakstype as import("./types").SaksType) || undefined,
     createdAt: toDate(data.createdAt as Timestamp),
     updatedAt: toDate(data.updatedAt as Timestamp),
     startDate: data.startDate ? toDate(data.startDate as Timestamp) : undefined,
