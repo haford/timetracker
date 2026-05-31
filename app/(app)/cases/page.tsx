@@ -344,7 +344,10 @@ function CaseCard({ c, router, minutesByCaseId, categories, onDelete }: {
 }) {
   const cat = categories.find((x) => x.id === c.categoryId);
   const totalMin = minutesByCaseId[c.id] ?? 0;
-  const deadlineOverdue = c.deadline && isPast(c.deadline) && !isToday(c.deadline) && c.status !== "avsluttet";
+  const deadlineOverdue = c.deadline && isPast(c.deadline) && !isToday(c.deadline)
+    && c.status !== "avsluttet" && c.status !== "karakter_satt";
+  const deadlineHeld = c.deadline && isPast(c.deadline) && !isToday(c.deadline)
+    && c.status === "karakter_satt";
 
   return (
     <Link href={`/cases/${c.id}`} className="block group">
@@ -394,11 +397,14 @@ function CaseCard({ c, router, minutesByCaseId, categories, onDelete }: {
             {c.deadline && (
               <span className={cn(
                 "flex items-center gap-1",
-                deadlineOverdue ? "text-red-500 font-medium" : ""
+                deadlineOverdue ? "text-red-500 font-medium"
+                  : deadlineHeld ? "text-emerald-600 font-medium" : ""
               )}>
                 <CalendarDays className="h-3 w-3" />
-                Frist: {format(c.deadline, "d. MMM yyyy", { locale: nb })}
-                {deadlineOverdue && " — utgått"}
+                {deadlineHeld
+                  ? `Frist holdt: ${format(c.deadline, "d. MMM yyyy", { locale: nb })}`
+                  : `Frist: ${format(c.deadline, "d. MMM yyyy", { locale: nb })}${deadlineOverdue ? " \u2014 utg\u00e5tt" : ""}`
+                }
               </span>
             )}
           </div>
@@ -451,7 +457,10 @@ function CaseRow({ c, router, minutesByCaseId, categories, onDelete }: {
 }) {
   const cat = categories.find((x) => x.id === c.categoryId);
   const totalMin = minutesByCaseId[c.id] ?? 0;
-  const deadlineOverdue = c.deadline && isPast(c.deadline) && !isToday(c.deadline) && c.status !== "avsluttet";
+  const deadlineOverdue = c.deadline && isPast(c.deadline) && !isToday(c.deadline)
+    && c.status !== "avsluttet" && c.status !== "karakter_satt";
+  const deadlineHeld = c.deadline && isPast(c.deadline) && !isToday(c.deadline)
+    && c.status === "karakter_satt";
 
   return (
     <div className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors group">
@@ -472,11 +481,15 @@ function CaseRow({ c, router, minutesByCaseId, categories, onDelete }: {
           {c.deadline && (
             <span className={cn(
               "text-xs flex items-center gap-1",
-              deadlineOverdue ? "text-red-500 font-medium" : "text-slate-400"
+              deadlineOverdue ? "text-red-500 font-medium"
+                : deadlineHeld ? "text-emerald-600 font-medium"
+                : "text-slate-400"
             )}>
               <CalendarDays className="h-3 w-3" />
-              Frist: {format(c.deadline, "d. MMM yyyy", { locale: nb })}
-              {deadlineOverdue && " — utgått"}
+              {deadlineHeld
+                ? `Frist holdt: ${format(c.deadline, "d. MMM yyyy", { locale: nb })}`
+                : `Frist: ${format(c.deadline, "d. MMM yyyy", { locale: nb })}${deadlineOverdue ? " \u2014 utg\u00e5tt" : ""}`
+              }
             </span>
           )}
           {c.startDate && (

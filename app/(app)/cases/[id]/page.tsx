@@ -123,12 +123,19 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <CategoryBadge category={category} small />
-            {caseData.deadline && (
-              <span className="flex items-center gap-1">
-                <CalendarDays className="h-3.5 w-3.5" />
-                Frist: {format(caseData.deadline, "d. MMMM yyyy", { locale: nb })}
-              </span>
-            )}
+            {caseData.deadline && (() => {
+              const held = isPast(caseData.deadline) && !isToday(caseData.deadline)
+                && caseData.status === "karakter_satt";
+              return (
+                <span className={cn("flex items-center gap-1", held && "text-emerald-600 font-medium")}>
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  {held
+                    ? `Frist holdt: ${format(caseData.deadline, "d. MMMM yyyy", { locale: nb })}`
+                    : `Frist: ${format(caseData.deadline, "d. MMMM yyyy", { locale: nb })}`
+                  }
+                </span>
+              );
+            })()}
           </div>
           {caseData.description && (
             <p className="mt-2 text-sm text-slate-600">{caseData.description}</p>
