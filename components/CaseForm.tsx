@@ -34,7 +34,7 @@ const schema = z.object({
   title: z.string().min(1, "Tittel er påkrevd"),
   description: z.string(),
   categoryId: z.string(),
-  status: z.enum(["ikke_startet", "påbegynt", "pause", "avsluttet"] as const),
+  status: z.enum(["ikke_startet", "påbegynt", "pause", "karakter_satt", "avsluttet"] as const),
   oppdragEpost: z.string(),
   contactName: z.string(),
   contactInfo: z.string(),
