@@ -500,6 +500,7 @@ function CaseRow({ c, router, minutesByCaseId, categories, onDelete }: {
               {SAKSTYPE_LABELS[c.sakstype]}
             </Badge>
           )}
+        </div>
         <div className="flex items-center gap-3 mt-0.5 flex-wrap">
           {c.description && (
             <span className="text-xs text-slate-400 truncate max-w-xs">{c.description}</span>
