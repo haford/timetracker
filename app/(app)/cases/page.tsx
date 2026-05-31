@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Plus, Search, MoreVertical, Pencil, Trash2, Clock,
-  ArrowUpDown, CalendarDays, LayoutGrid, List, Copy, User, Target,
+  ArrowUpDown, CalendarDays, LayoutGrid, List, Copy, User, Target, GraduationCap,
 } from "lucide-react";
 import { format, isPast, isToday } from "date-fns";
 import { nb } from "date-fns/locale";
@@ -72,6 +72,7 @@ export default function CasesPage() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("alle");
   const [sakstypeFilter, setSakstypeFilter] = useState<string>("alle");
+  const [laerestedFilter, setLaerestedFilter] = useState<string>("alle");
   const [sortBy, setSortBy] = useState<SortKey>("oppdatert");
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -79,6 +80,11 @@ export default function CasesPage() {
   entries.forEach((e) => {
     minutesByCaseId[e.caseId] = (minutesByCaseId[e.caseId] ?? 0) + e.durationMinutes;
   });
+
+  const laerestedOptions = useMemo(
+    () => [...new Set(cases.map(c => c.laerested).filter(Boolean))].sort() as string[],
+    [cases]
+  );
 
   const pågåendeCount = cases.filter((c) => ACTIVE_STATUSES.includes(c.status)).length;
   const avsluttetCount = cases.filter((c) => c.status === "avsluttet").length;
@@ -93,7 +99,8 @@ export default function CasesPage() {
         (c.description ?? "").toLowerCase().includes(search.toLowerCase());
       const matchCat = categoryFilter === "alle" || c.categoryId === categoryFilter;
       const matchSakstype = sakstypeFilter === "alle" || c.sakstype === sakstypeFilter;
-      return matchTab && matchSearch && matchCat && matchSakstype;
+      const matchLaerested = laerestedFilter === "alle" || c.laerested === laerestedFilter;
+      return matchTab && matchSearch && matchCat && matchSakstype && matchLaerested;
     })
     .sort((a, b) => {
       if (sortBy === "frist") {
@@ -189,6 +196,21 @@ export default function CasesPage() {
             ))}
           </SelectContent>
         </Select>
+        {laerestedOptions.length > 0 && (
+          <Select value={laerestedFilter} onValueChange={(v) => setLaerestedFilter(v ?? "alle")}>
+            <SelectTrigger className="w-44">
+              <span className="text-sm truncate">
+                {laerestedFilter === "alle" ? "Alle læresteder" : laerestedFilter}
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="alle">Alle læresteder</SelectItem>
+              {laerestedOptions.map((l) => (
+                <SelectItem key={l} value={l}>{l}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Select value={sortBy} onValueChange={(v) => v && setSortBy(v as SortKey)}>
           <SelectTrigger className="w-44">
             <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 mr-1.5" />
@@ -223,6 +245,13 @@ export default function CasesPage() {
           </button>
         </div>
       </div>
+
+      {/* Result count */}
+      {!loading && (
+        <p className="text-xs text-slate-400 mb-3">
+          {filtered.length} {filtered.length === 1 ? "sak" : "saker"}
+        </p>
+      )}
 
       {/* Content */}
       {loading ? (
@@ -403,6 +432,11 @@ function CaseCard({ c, router, minutesByCaseId, categories, onDelete }: {
             <User className="h-3 w-3" />{c.contactName}
           </p>
         )}
+        {c.laerested && (
+          <p className="text-xs text-slate-400 flex items-center gap-1 mb-2">
+            <GraduationCap className="h-3 w-3" />{c.laerested}
+          </p>
+        )}
 
         {/* Spacer */}
         <div className="flex-1" />
@@ -504,6 +538,11 @@ function CaseRow({ c, router, minutesByCaseId, categories, onDelete }: {
         <div className="flex items-center gap-3 mt-0.5 flex-wrap">
           {c.description && (
             <span className="text-xs text-slate-400 truncate max-w-xs">{c.description}</span>
+          )}
+          {c.laerested && (
+            <span className="text-xs text-slate-400 flex items-center gap-1">
+              <GraduationCap className="h-3 w-3" />{c.laerested}
+            </span>
           )}
           {c.deadline && (
             <span className={cn(

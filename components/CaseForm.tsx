@@ -37,6 +37,7 @@ const schema = z.object({
   status: z.enum(["ikke_startet", "påbegynt", "pause", "karakter_satt", "avsluttet"] as const),
   sakstype: z.string().optional(),
   oppdragEpost: z.string(),
+  laerested: z.string(),
   contactName: z.string(),
   contactInfo: z.string(),
   notes: z.string(),
@@ -56,6 +57,7 @@ type FormData = {
   status: CaseStatus;
   sakstype?: SaksType;
   oppdragEpost: string;
+  laerested: string;
   contactName: string;
   contactInfo: string;
   notes: string;
@@ -98,6 +100,7 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
       status: editCase?.status ?? "ikke_startet",
       sakstype: src?.sakstype,
       oppdragEpost: editCase?.oppdragEpost ?? "",
+      laerested: src?.laerested ?? "",
       contactName: src?.contactName ?? "",
       contactInfo: src?.contactInfo ?? "",
       notes: editCase?.notes ?? "",
@@ -171,6 +174,7 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
         categoryId: data.categoryId,
         status: data.status,
         oppdragEpost: data.oppdragEpost || "",
+        laerested: data.laerested || "",
         contactName: data.contactName || "",
         contactInfo: data.contactInfo || "",
         notes: data.notes || "",
@@ -314,6 +318,12 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
             </PopoverContent>
           </Popover>
         </div>
+      </div>
+
+      {/* Lærested */}
+      <div className="space-y-1.5">
+        <Label htmlFor="laerested">Lærested</Label>
+        <Input id="laerested" placeholder="Institusjon / lærested..." {...register("laerested")} />
       </div>
 
       {/* Oppdrags-epost */}

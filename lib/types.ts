@@ -51,6 +51,7 @@ export interface Case {
   startDate?: Date;
   deadline?: Date;
   oppdragEpost?: string;
+  laerested?: string;
   contactName?: string;
   contactInfo?: string;
   notes?: string;
