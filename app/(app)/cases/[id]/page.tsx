@@ -36,7 +36,7 @@ import { Clock, Pencil, Plus, Trash2, CalendarDays, User, Banknote, Mail, Target
 import { CaseDocuments } from "@/components/CaseDocuments";
 import { SignertAvtaleSection } from "@/components/SignertAvtaleSection";
 import { UtbetalingSection } from "@/components/UtbetalingSection";
-import { format, isPast, isToday } from "date-fns";
+import { format, isPast, isToday, isFuture } from "date-fns";
 import { nb } from "date-fns/locale";
 import { toast } from "sonner";
 
@@ -178,6 +178,48 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
               <p className="text-xs text-slate-400 mb-0.5">Kontaktperson</p>
               <p className="text-sm font-medium text-slate-800">{caseData.contactName}</p>
               {caseData.contactInfo && <p className="text-xs text-slate-500">{caseData.contactInfo}</p>}
+            </div>
+          </div>
+        )}
+        {caseData.moter && caseData.moter.length > 0 && (
+          <div className="flex items-start gap-3 px-4 py-3">
+            <CalendarDays className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-xs text-slate-400 mb-1.5">Møter</p>
+              <div className="space-y-1.5">
+                {[...caseData.moter]
+                  .sort((a, b) => a.dato.getTime() - b.dato.getTime())
+                  .map((m, i) => {
+                    const past = isPast(m.dato) && !isToday(m.dato);
+                    const today = isToday(m.dato);
+                    return (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className={cn(
+                          "text-sm font-medium",
+                          past ? "text-slate-400 line-through" : today ? "text-indigo-700" : "text-slate-800"
+                        )}>
+                          {format(m.dato, "d. MMMM yyyy", { locale: nb })}
+                          {m.tid && ` kl. ${m.tid}`}
+                        </span>
+                        {m.tittel && (
+                          <span className={cn(
+                            "text-xs px-1.5 py-0.5 rounded border",
+                            past
+                              ? "text-slate-400 bg-slate-50 border-slate-100"
+                              : today
+                              ? "text-indigo-700 bg-indigo-50 border-indigo-200"
+                              : "text-slate-500 bg-slate-50 border-slate-200"
+                          )}>
+                            {m.tittel}
+                          </span>
+                        )}
+                        {today && (
+                          <span className="text-xs text-indigo-600 font-medium">i dag</span>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
             </div>
           </div>
         )}

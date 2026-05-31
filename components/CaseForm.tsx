@@ -6,7 +6,7 @@ import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { addCase, updateCase } from "@/lib/firestore";
-import { STATUS_LABELS, type Case, type CaseStatus, type Category, type HonorarTillegg, type Delfrist } from "@/lib/types";
+import { STATUS_LABELS, type Case, type CaseStatus, type Category, type HonorarTillegg, type Delfrist, type Mote } from "@/lib/types";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -84,6 +84,7 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
   const [deadline, setDeadline] = useState<Date | undefined>(editCase?.deadline);
   const [tillegg, setTillegg] = useState<HonorarTillegg[]>(editCase?.honorarTillegg ?? []);
   const [delfrister, setDelfrister] = useState<Delfrist[]>(editCase?.delfrister ?? []);
+  const [moter, setMoter] = useState<Mote[]>(editCase?.moter ?? []);
   const [saving, setSaving] = useState(false);
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
@@ -148,6 +149,15 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
   const updateDelfristDate = (i: number, date: Date | undefined) =>
     setDelfrister((prev) => prev.map((d, idx) => (idx === i ? { ...d, date: date ?? d.date } : d)));
 
+  const addMote = () =>
+    setMoter((prev) => [...prev, { tittel: "", dato: new Date(), tid: "" }]);
+
+  const removeMote = (i: number) =>
+    setMoter((prev) => prev.filter((_, idx) => idx !== i));
+
+  const updateMote = <K extends keyof Mote>(i: number, field: K, value: Mote[K]) =>
+    setMoter((prev) => prev.map((m, idx) => (idx === i ? { ...m, [field]: value } : m)));
+
   const onSubmit = async (data: FormData) => {
     setSaving(true);
     try {
@@ -166,6 +176,7 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
       if (startDate) payload.startDate = startDate;
       if (deadline) payload.deadline = deadline;
       payload.delfrister = delfrister;
+      payload.moter = moter;
       if (data.isPaid) {
         if (data.honorarTimesats != null) payload.honorarTimesats = data.honorarTimesats;
         if (data.honorarTimefaktor != null) payload.honorarTimefaktor = data.honorarTimefaktor;
@@ -354,6 +365,63 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
             <button
               type="button"
               onClick={() => removeDelfrist(i)}
+              className="text-slate-300 hover:text-red-500 transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Møter */}
+      <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium text-slate-700">Møter</p>
+          <button
+            type="button"
+            onClick={addMote}
+            className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+          >
+            <Plus className="h-3 w-3" /> Legg til
+          </button>
+        </div>
+        {moter.length === 0 && (
+          <p className="text-xs text-slate-400">Ingen møter lagt til ennå.</p>
+        )}
+        {moter.map((m, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <Input
+              value={m.tittel}
+              onChange={(e) => updateMote(i, "tittel", e.target.value)}
+              placeholder="Tittel / beskrivelse"
+              className="flex-1 text-sm h-8"
+            />
+            <Popover>
+              <PopoverTrigger className={cn(
+                buttonVariants({ variant: "outline" }),
+                "h-8 px-2 text-sm justify-start font-normal shrink-0 w-32",
+              )}>
+                <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
+                {format(m.dato, "d. MMM yyyy", { locale: nb })}
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={m.dato}
+                  onSelect={(date) => date && updateMote(i, "dato", date)}
+                  locale={nb}
+                />
+              </PopoverContent>
+            </Popover>
+            <Input
+              type="time"
+              value={m.tid ?? ""}
+              onChange={(e) => updateMote(i, "tid", e.target.value)}
+              className="w-24 text-sm h-8 shrink-0"
+            />
+            <button
+              type="button"
+              onClick={() => removeMote(i)}
               className="text-slate-300 hover:text-red-500 transition-colors"
             >
               <X className="h-3.5 w-3.5" />

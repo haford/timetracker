@@ -20,6 +20,12 @@ export interface Delfrist {
   date: Date;
 }
 
+export interface Mote {
+  tittel: string;
+  dato: Date;
+  tid?: string; // "HH:mm"
+}
+
 export interface GradeProgress {
   antallRettet: number;
   loggedAt: Date;
@@ -61,6 +67,7 @@ export interface Case {
   lonnsslippDownloadUrl?: string;
   lonnsslippNavn?: string;
   delfrister?: Delfrist[];
+  moter?: Mote[];
 }
 
 export interface CaseDocument {

@@ -15,7 +15,7 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { getFirebaseDb } from "./firebase";
-import type { Case, Category, TimeEntry, CaseStatus, UserSettings, Delfrist } from "./types";
+import type { Case, Category, TimeEntry, CaseStatus, UserSettings, Delfrist, Mote } from "./types";
 
 // ──────────────────────────────────────────
 // Helpers
@@ -114,6 +114,11 @@ const caseFromDoc = (d: { id: string; data: () => Record<string, unknown> }): Ca
       label: d.label as string,
       date: toDate(d.date as Timestamp),
     })),
+    moter: ((data.moter as Array<{tittel: string; dato: Timestamp; tid?: string}>) || []).map(m => ({
+      tittel: m.tittel as string,
+      dato: toDate(m.dato as Timestamp),
+      tid: m.tid as string | undefined,
+    })),
   };
 };
 
@@ -137,6 +142,11 @@ export const addCase = (
     delfrister: (data.delfrister ?? []).map(d => ({
       label: d.label,
       date: Timestamp.fromDate(d.date),
+    })),
+    moter: (data.moter ?? []).map(m => ({
+      tittel: m.tittel,
+      dato: Timestamp.fromDate(m.dato),
+      ...(m.tid ? { tid: m.tid } : {}),
     })),
     createdAt: now,
     updatedAt: now,
@@ -177,6 +187,14 @@ export const updateCase = (
     update.delfrister = (data.delfrister ?? []).map((d: Delfrist) => ({
       label: d.label,
       date: Timestamp.fromDate(d.date),
+    }));
+  }
+
+  if ("moter" in data) {
+    update.moter = (data.moter ?? []).map((m: Mote) => ({
+      tittel: m.tittel,
+      dato: Timestamp.fromDate(m.dato),
+      ...(m.tid ? { tid: m.tid } : {}),
     }));
   }
 
