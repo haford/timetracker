@@ -381,6 +381,7 @@ function CaseCard({ c, router, minutesByCaseId, categories, onDelete }: {
                 {SAKSTYPE_LABELS[c.sakstype]}
               </Badge>
             )}
+          </div>
           <div onClick={(e) => e.preventDefault()}>
             <CaseMenu c={c} router={router} onDelete={onDelete} />
           </div>
