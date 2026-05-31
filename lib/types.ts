@@ -15,6 +15,11 @@ export interface HonorarTillegg {
   belop: number;
 }
 
+export interface Delfrist {
+  label: string;
+  date: Date;
+}
+
 export interface GradeProgress {
   antallRettet: number;
   loggedAt: Date;
@@ -55,6 +60,7 @@ export interface Case {
   lonnsslippStoragePath?: string;
   lonnsslippDownloadUrl?: string;
   lonnsslippNavn?: string;
+  delfrister?: Delfrist[];
 }
 
 export interface CaseDocument {

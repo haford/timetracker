@@ -15,7 +15,7 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { getFirebaseDb } from "./firebase";
-import type { Case, Category, TimeEntry, CaseStatus, UserSettings } from "./types";
+import type { Case, Category, TimeEntry, CaseStatus, UserSettings, Delfrist } from "./types";
 
 // ──────────────────────────────────────────
 // Helpers
@@ -110,6 +110,10 @@ const caseFromDoc = (d: { id: string; data: () => Record<string, unknown> }): Ca
       antallRettet: p.antallRettet as number,
       loggedAt: toDate(p.loggedAt as Timestamp),
     })) || undefined,
+    delfrister: ((data.delfrister as Array<{label: string; date: Timestamp}>) || []).map(d => ({
+      label: d.label as string,
+      date: toDate(d.date as Timestamp),
+    })),
   };
 };
 
@@ -130,6 +134,10 @@ export const addCase = (
     ...data,
     startDate: data.startDate ? Timestamp.fromDate(data.startDate) : null,
     deadline: data.deadline ? Timestamp.fromDate(data.deadline) : null,
+    delfrister: (data.delfrister ?? []).map(d => ({
+      label: d.label,
+      date: Timestamp.fromDate(d.date),
+    })),
     createdAt: now,
     updatedAt: now,
   });
@@ -162,6 +170,13 @@ export const updateCase = (
     update.gradeProgress = data.gradeProgress.map(p => ({
       antallRettet: p.antallRettet,
       loggedAt: Timestamp.fromDate(p.loggedAt),
+    }));
+  }
+
+  if ("delfrister" in data) {
+    update.delfrister = (data.delfrister ?? []).map((d: Delfrist) => ({
+      label: d.label,
+      date: Timestamp.fromDate(d.date),
     }));
   }
 

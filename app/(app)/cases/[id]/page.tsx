@@ -36,7 +36,7 @@ import { Clock, Pencil, Plus, Trash2, CalendarDays, User, Banknote, Mail, Target
 import { CaseDocuments } from "@/components/CaseDocuments";
 import { SignertAvtaleSection } from "@/components/SignertAvtaleSection";
 import { UtbetalingSection } from "@/components/UtbetalingSection";
-import { format } from "date-fns";
+import { format, isPast, isToday } from "date-fns";
 import { nb } from "date-fns/locale";
 import { toast } from "sonner";
 
@@ -178,6 +178,44 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
               <p className="text-xs text-slate-400 mb-0.5">Kontaktperson</p>
               <p className="text-sm font-medium text-slate-800">{caseData.contactName}</p>
               {caseData.contactInfo && <p className="text-xs text-slate-500">{caseData.contactInfo}</p>}
+            </div>
+          </div>
+        )}
+        {caseData.delfrister && caseData.delfrister.length > 0 && (
+          <div className="flex items-start gap-3 px-4 py-3">
+            <CalendarDays className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-xs text-slate-400 mb-1.5">Delfrister</p>
+              <div className="space-y-1">
+                {[...caseData.delfrister]
+                  .sort((a, b) => a.date.getTime() - b.date.getTime())
+                  .map((d, i) => {
+                    const overdue = isPast(d.date) && !isToday(d.date) && caseData.status !== "avsluttet";
+                    return (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className={cn(
+                          "text-sm font-medium",
+                          overdue ? "text-red-600" : "text-slate-800"
+                        )}>
+                          {format(d.date, "d. MMMM yyyy", { locale: nb })}
+                        </span>
+                        {d.label && (
+                          <span className={cn(
+                            "text-xs px-1.5 py-0.5 rounded border",
+                            overdue
+                              ? "text-red-600 bg-red-50 border-red-200"
+                              : "text-slate-500 bg-slate-50 border-slate-200"
+                          )}>
+                            {d.label}
+                          </span>
+                        )}
+                        {overdue && (
+                          <span className="text-xs text-red-500 font-medium">utgått</span>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
             </div>
           </div>
         )}

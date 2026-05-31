@@ -6,7 +6,7 @@ import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { addCase, updateCase } from "@/lib/firestore";
-import { STATUS_LABELS, type Case, type CaseStatus, type Category, type HonorarTillegg } from "@/lib/types";
+import { STATUS_LABELS, type Case, type CaseStatus, type Category, type HonorarTillegg, type Delfrist } from "@/lib/types";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -83,6 +83,7 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
   const [startDate, setStartDate] = useState<Date | undefined>(editCase?.startDate);
   const [deadline, setDeadline] = useState<Date | undefined>(editCase?.deadline);
   const [tillegg, setTillegg] = useState<HonorarTillegg[]>(editCase?.honorarTillegg ?? []);
+  const [delfrister, setDelfrister] = useState<Delfrist[]>(editCase?.delfrister ?? []);
   const [saving, setSaving] = useState(false);
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
@@ -135,6 +136,18 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
       prev.map((t, idx) => (idx === i ? { ...t, [field]: value } : t))
     );
 
+  const addDelfrist = () =>
+    setDelfrister((prev) => [...prev, { label: "", date: new Date() }]);
+
+  const removeDelfrist = (i: number) =>
+    setDelfrister((prev) => prev.filter((_, idx) => idx !== i));
+
+  const updateDelfristLabel = (i: number, label: string) =>
+    setDelfrister((prev) => prev.map((d, idx) => (idx === i ? { ...d, label } : d)));
+
+  const updateDelfristDate = (i: number, date: Date | undefined) =>
+    setDelfrister((prev) => prev.map((d, idx) => (idx === i ? { ...d, date: date ?? d.date } : d)));
+
   const onSubmit = async (data: FormData) => {
     setSaving(true);
     try {
@@ -152,6 +165,7 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
       };
       if (startDate) payload.startDate = startDate;
       if (deadline) payload.deadline = deadline;
+      payload.delfrister = delfrister;
       if (data.isPaid) {
         if (data.honorarTimesats != null) payload.honorarTimesats = data.honorarTimesats;
         if (data.honorarTimefaktor != null) payload.honorarTimefaktor = data.honorarTimefaktor;
@@ -294,6 +308,58 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-none"
           {...register("notes")}
         />
+      </div>
+
+      {/* Delfrister */}
+      <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium text-slate-700">Delfrister</p>
+          <button
+            type="button"
+            onClick={addDelfrist}
+            className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+          >
+            <Plus className="h-3 w-3" /> Legg til
+          </button>
+        </div>
+        {delfrister.length === 0 && (
+          <p className="text-xs text-slate-400">Ingen delfrister lagt til ennå.</p>
+        )}
+        {delfrister.map((d, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <Input
+              value={d.label}
+              onChange={(e) => updateDelfristLabel(i, e.target.value)}
+              placeholder="Label, f.eks. «Sensorveiledning»"
+              className="flex-1 text-sm h-8"
+            />
+            <Popover>
+              <PopoverTrigger className={cn(
+                buttonVariants({ variant: "outline" }),
+                "h-8 px-2 text-sm justify-start font-normal shrink-0 w-36",
+                !d.date && "text-muted-foreground"
+              )}>
+                <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
+                {d.date ? format(d.date, "d. MMM yyyy", { locale: nb }) : "Dato"}
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={d.date}
+                  onSelect={(date) => updateDelfristDate(i, date)}
+                  locale={nb}
+                />
+              </PopoverContent>
+            </Popover>
+            <button
+              type="button"
+              onClick={() => removeDelfrist(i)}
+              className="text-slate-300 hover:text-red-500 transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
       </div>
 
       {/* Honorar */}

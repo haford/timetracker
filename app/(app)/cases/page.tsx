@@ -47,7 +47,7 @@ import { toast } from "sonner";
 import type { Case, Category } from "@/lib/types";
 
 type Tab = "pågående" | "avsluttet";
-type SortKey = "oppdatert" | "frist" | "opprettet" | "tittel" | "timer";
+type SortKey = "oppdatert" | "frist" | "opprettet" | "tittel" | "timer" | "delfrist";
 type ViewMode = "kort" | "tabell";
 
 const ACTIVE_STATUSES: CaseStatus[] = ["ikke_startet", "påbegynt", "pause"];
@@ -99,6 +99,14 @@ export default function CasesPage() {
         if (!a.deadline) return 1;
         if (!b.deadline) return -1;
         return a.deadline.getTime() - b.deadline.getTime();
+      }
+      if (sortBy === "delfrist") {
+        const nextA = (a.delfrister ?? []).map(d => d.date.getTime()).sort()[0] ?? Infinity;
+        const nextB = (b.delfrister ?? []).map(d => d.date.getTime()).sort()[0] ?? Infinity;
+        if (nextA === Infinity && nextB === Infinity) return 0;
+        if (nextA === Infinity) return 1;
+        if (nextB === Infinity) return -1;
+        return nextA - nextB;
       }
       if (sortBy === "opprettet") return b.createdAt.getTime() - a.createdAt.getTime();
       if (sortBy === "tittel") return a.title.localeCompare(b.title, "nb");
@@ -168,12 +176,13 @@ export default function CasesPage() {
           <SelectTrigger className="w-44">
             <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 mr-1.5" />
             <span className="text-sm truncate">
-              {{ oppdatert: "Sist oppdatert", frist: "Frist", opprettet: "Opprettet", tittel: "Tittel", timer: "Timer" }[sortBy]}
+              {{ oppdatert: "Sist oppdatert", frist: "Frist", opprettet: "Opprettet", tittel: "Tittel", timer: "Timer", delfrist: "Delfrist" }[sortBy]}
             </span>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="oppdatert">Sist oppdatert</SelectItem>
             <SelectItem value="frist">Frist</SelectItem>
+            <SelectItem value="delfrist">Delfrist</SelectItem>
             <SelectItem value="opprettet">Opprettet</SelectItem>
             <SelectItem value="tittel">Tittel</SelectItem>
             <SelectItem value="timer">Timer (flest)</SelectItem>
@@ -403,6 +412,30 @@ function CaseCard({ c, router, minutesByCaseId, categories, onDelete }: {
             )}
           </div>
         </div>
+        {/* Delfrister */}
+        {c.delfrister && c.delfrister.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-1.5">
+            {[...c.delfrister]
+              .sort((a, b) => a.date.getTime() - b.date.getTime())
+              .map((d, i) => {
+                const overdue = isPast(d.date) && !isToday(d.date) && c.status !== "avsluttet";
+                return (
+                  <span
+                    key={i}
+                    className={cn(
+                      "inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border",
+                      overdue
+                        ? "text-red-600 bg-red-50 border-red-200"
+                        : "text-slate-500 bg-slate-50 border-slate-200"
+                    )}
+                  >
+                    <CalendarDays className="h-3 w-3 shrink-0" />
+                    {d.label ? `${d.label}: ` : ""}{format(d.date, "d. MMM", { locale: nb })}
+                  </span>
+                );
+              })}
+          </div>
+        )}
       </div>
     </Link>
   );
@@ -451,6 +484,22 @@ function CaseRow({ c, router, minutesByCaseId, categories, onDelete }: {
               <CalendarDays className="h-3 w-3" />
               {format(c.startDate, "d. MMM yyyy", { locale: nb })}
             </span>
+          )}
+          {c.delfrister && c.delfrister.length > 0 && (
+            [...c.delfrister]
+              .sort((a, b) => a.date.getTime() - b.date.getTime())
+              .map((d, i) => {
+                const overdue = isPast(d.date) && !isToday(d.date) && c.status !== "avsluttet";
+                return (
+                  <span key={i} className={cn(
+                    "text-xs flex items-center gap-1",
+                    overdue ? "text-red-500 font-medium" : "text-slate-400"
+                  )}>
+                    <CalendarDays className="h-3 w-3" />
+                    {d.label ? `${d.label}: ` : ""}{format(d.date, "d. MMM yyyy", { locale: nb })}
+                  </span>
+                );
+              })
           )}
           <PaceBadge c={c} />
         </div>
