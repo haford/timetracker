@@ -13,11 +13,13 @@ import {
   Scale,
   LogOut,
   Banknote,
+  CalendarDays,
 } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/cases", label: "Saker", icon: FolderOpen },
+  { href: "/kalender", label: "Kalender", icon: CalendarDays },
   { href: "/timer", label: "Timeføring", icon: Clock },
   { href: "/categories", label: "Kategorier", icon: Tag },
   { href: "/reports", label: "Rapporter", icon: BarChart3 },
