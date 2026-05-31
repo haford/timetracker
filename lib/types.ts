@@ -1,4 +1,4 @@
-export type CaseStatus = "ikke_startet" | "påbegynt" | "pause" | "avsluttet";
+export type CaseStatus = "ikke_startet" | "påbegynt" | "pause" | "karakter_satt" | "avsluttet";
 
 export interface UserSettings {
   globalSkattetrekk?: number;
@@ -94,6 +94,7 @@ export const STATUS_LABELS: Record<CaseStatus, string> = {
   ikke_startet: "Ikke startet",
   påbegynt: "Påbegynt",
   pause: "Pause",
+  karakter_satt: "Karakter satt",
   avsluttet: "Avsluttet",
 };
 
@@ -101,5 +102,6 @@ export const STATUS_COLORS: Record<CaseStatus, string> = {
   ikke_startet: "bg-slate-100 text-slate-700",
   påbegynt: "bg-blue-100 text-blue-700",
   pause: "bg-yellow-100 text-yellow-700",
+  karakter_satt: "bg-violet-100 text-violet-700",
   avsluttet: "bg-green-100 text-green-700",
 };

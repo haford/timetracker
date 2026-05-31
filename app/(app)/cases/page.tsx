@@ -50,7 +50,7 @@ type Tab = "pågående" | "avsluttet";
 type SortKey = "oppdatert" | "frist" | "opprettet" | "tittel" | "timer" | "delfrist";
 type ViewMode = "kort" | "tabell";
 
-const ACTIVE_STATUSES: CaseStatus[] = ["ikke_startet", "påbegynt", "pause"];
+const ACTIVE_STATUSES: CaseStatus[] = ["ikke_startet", "påbegynt", "pause", "karakter_satt"];
 
 function minutesToHours(min: number): string {
   const h = Math.floor(min / 60);
