@@ -123,6 +123,15 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
   const antall = watch("honorarAntallBesvarelser");
   const honorar = watch("honorar");
 
+  const isSensur = categories.some(
+    (c) => c.id === categoryId && c.name.toLowerCase().includes("sensur")
+  );
+
+  const [knownLaersteder, setKnownLaersteder] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("known-laersteder") ?? "[]"); }
+    catch { return []; }
+  });
+
   const basisHonorar =
     timesats != null && timefaktor != null && antall != null
       ? Math.round(timesats * timefaktor * antall)
@@ -193,6 +202,15 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
         if (tillegg.length > 0) payload.honorarTillegg = tillegg;
         if (data.honorar != null) payload.honorar = data.honorar;
         if (data.skattetrekk != null) payload.skattetrekk = data.skattetrekk;
+      }
+      // Remember new lærested for future suggestions
+      const lr = (payload.laerested as string)?.trim();
+      if (lr && isSensur) {
+        setKnownLaersteder((prev) => {
+          const updated = [...new Set([lr, ...prev])];
+          try { localStorage.setItem("known-laersteder", JSON.stringify(updated)); } catch { /* */ }
+          return updated;
+        });
       }
       if (editCase) {
         await updateCase(userId, editCase.id, payload as Parameters<typeof updateCase>[2]);
@@ -320,11 +338,23 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
         </div>
       </div>
 
-      {/* Lærested */}
-      <div className="space-y-1.5">
-        <Label htmlFor="laerested">Lærested</Label>
-        <Input id="laerested" placeholder="Institusjon / lærested..." {...register("laerested")} />
-      </div>
+      {/* Lærested – kun for sensur-kategorien */}
+      {isSensur && (
+        <div className="space-y-1.5">
+          <Label htmlFor="laerested">Lærested</Label>
+          <Input
+            id="laerested"
+            list="laerested-list"
+            placeholder="Skriv eller velg institusjon..."
+            {...register("laerested")}
+          />
+          <datalist id="laerested-list">
+            {knownLaersteder.map((v) => (
+              <option key={v} value={v} />
+            ))}
+          </datalist>
+        </div>
+      )}
 
       {/* Oppdrags-epost */}
       <div className="space-y-1.5">
