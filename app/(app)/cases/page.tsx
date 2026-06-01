@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
@@ -61,6 +61,20 @@ function minutesToHours(min: number): string {
   return `${h}t ${m}m`;
 }
 
+const PREF_NS = "cases-page:";
+function loadPref(key: string, def: string): string {
+  try { return localStorage.getItem(PREF_NS + key) ?? def; } catch { return def; }
+}
+function loadPrefArr(key: string): string[] {
+  try { return JSON.parse(localStorage.getItem(PREF_NS + key) ?? "[]"); } catch { return []; }
+}
+function savePref(key: string, val: string) {
+  try { localStorage.setItem(PREF_NS + key, val); } catch { /* */ }
+}
+function savePrefArr(key: string, val: string[]) {
+  try { localStorage.setItem(PREF_NS + key, JSON.stringify(val)); } catch { /* */ }
+}
+
 export default function CasesPage() {
   const { user } = useAuth();
   const { cases, loading } = useCases(user?.uid);
@@ -68,16 +82,25 @@ export default function CasesPage() {
   const { entries } = useTimeEntries(user?.uid);
   const router = useRouter();
 
-  const [tab, setTab] = useState<Tab>("pågående");
-  const [view, setView] = useState<ViewMode>("kort");
+  const [tab, setTab] = useState<Tab>(() => loadPref("tab", "pågående") as Tab);
+  const [view, setView] = useState<ViewMode>(() => loadPref("view", "kort") as ViewMode);
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<string>("alle");
-  const [excludedSakstyper, setExcludedSakstyper] = useState<Set<string>>(new Set());
+  const [categoryFilter, setCategoryFilter] = useState<string>(() => loadPref("categoryFilter", "alle"));
+  const [excludedSakstyper, setExcludedSakstyper] = useState<Set<string>>(() => new Set(loadPrefArr("excludedSakstyper")));
   const toggleSakstype = (key: string) =>
     setExcludedSakstyper(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
-  const [laerestedFilter, setLaerestedFilter] = useState<string>("alle");
-  const [sortBy, setSortBy] = useState<SortKey>("oppdatert");
+  const [laerestedFilter, setLaerestedFilter] = useState<string>(() => loadPref("laerestedFilter", "alle"));
+  const [sortBy, setSortBy] = useState<SortKey>(() => loadPref("sortBy", "oppdatert") as SortKey);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    savePref("tab", tab);
+    savePref("view", view);
+    savePref("categoryFilter", categoryFilter);
+    savePrefArr("excludedSakstyper", [...excludedSakstyper]);
+    savePref("laerestedFilter", laerestedFilter);
+    savePref("sortBy", sortBy);
+  }, [tab, view, categoryFilter, excludedSakstyper, laerestedFilter, sortBy]);
 
   const minutesByCaseId: Record<string, number> = {};
   entries.forEach((e) => {
