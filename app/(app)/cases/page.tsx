@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -39,7 +40,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Plus, Search, MoreVertical, Pencil, Trash2, Clock,
-  ArrowUpDown, CalendarDays, LayoutGrid, List, Copy, User, Target, GraduationCap,
+  ArrowUpDown, CalendarDays, LayoutGrid, List, Copy, User, Target, GraduationCap, ChevronDown,
 } from "lucide-react";
 import { format, isPast, isToday } from "date-fns";
 import { nb } from "date-fns/locale";
@@ -71,7 +72,9 @@ export default function CasesPage() {
   const [view, setView] = useState<ViewMode>("kort");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("alle");
-  const [sakstypeFilter, setSakstypeFilter] = useState<string>("alle");
+  const [excludedSakstyper, setExcludedSakstyper] = useState<Set<string>>(new Set());
+  const toggleSakstype = (key: string) =>
+    setExcludedSakstyper(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const [laerestedFilter, setLaerestedFilter] = useState<string>("alle");
   const [sortBy, setSortBy] = useState<SortKey>("oppdatert");
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -98,7 +101,7 @@ export default function CasesPage() {
         c.title.toLowerCase().includes(search.toLowerCase()) ||
         (c.description ?? "").toLowerCase().includes(search.toLowerCase());
       const matchCat = categoryFilter === "alle" || c.categoryId === categoryFilter;
-      const matchSakstype = sakstypeFilter === "alle" || c.sakstype === sakstypeFilter;
+      const matchSakstype = excludedSakstyper.size === 0 || !excludedSakstyper.has(c.sakstype ?? "ingen");
       const matchLaerested = laerestedFilter === "alle" || c.laerested === laerestedFilter;
       return matchTab && matchSearch && matchCat && matchSakstype && matchLaerested;
     })
@@ -181,21 +184,36 @@ export default function CasesPage() {
             </SelectContent>
           </Select>
         )}
-        <Select value={sakstypeFilter} onValueChange={(v) => setSakstypeFilter(v ?? "alle")}>
-          <SelectTrigger className="w-52">
-            <span className="text-sm truncate">
-              {sakstypeFilter === "alle"
-                ? "Alle sakstyper"
-                : SAKSTYPE_LABELS[sakstypeFilter as SaksType] ?? "Alle sakstyper"}
-            </span>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="alle">Alle sakstyper</SelectItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger className={cn(
+            buttonVariants({ variant: "outline" }),
+            "h-9 px-3 gap-2 text-sm font-normal",
+            excludedSakstyper.size > 0 && "border-indigo-400 text-indigo-700"
+          )}>
+            {excludedSakstyper.size === 0
+              ? "Alle sakstyper"
+              : `Sakstyper (${excludedSakstyper.size} skjult)`}
+            <ChevronDown className="h-3.5 w-3.5 opacity-50 ml-auto" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-64">
             {(Object.keys(SAKSTYPE_LABELS) as SaksType[]).map((t) => (
-              <SelectItem key={t} value={t}>{SAKSTYPE_LABELS[t]}</SelectItem>
+              <DropdownMenuCheckboxItem
+                key={t}
+                checked={!excludedSakstyper.has(t)}
+                onCheckedChange={() => toggleSakstype(t)}
+              >
+                {SAKSTYPE_LABELS[t]}
+              </DropdownMenuCheckboxItem>
             ))}
-          </SelectContent>
-        </Select>
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              checked={!excludedSakstyper.has("ingen")}
+              onCheckedChange={() => toggleSakstype("ingen")}
+            >
+              Ingen / annet
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         {laerestedOptions.length > 0 && (
           <Select value={laerestedFilter} onValueChange={(v) => setLaerestedFilter(v ?? "alle")}>
             <SelectTrigger className="w-44">
