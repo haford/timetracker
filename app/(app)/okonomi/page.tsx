@@ -78,8 +78,11 @@ function InlineRateEdit({ value, globalRate, onSave }: {
   return (
     <button onClick={() => setEditing(true)} className="inline-flex items-center gap-0.5 group">
       <span className="text-xs text-slate-400">
-        {effective != null ? `${effective}%${value == null ? " (g)" : ""}` : "Sett %"}
+        {effective != null ? `${effective}%` : "Sett %"}
       </span>
+      {effective != null && value == null && (
+        <span className="text-[10px] text-slate-300" title="Bruker global skattetrekk">std</span>
+      )}
       <Pencil className="h-2.5 w-2.5 text-slate-200 group-hover:text-slate-400" />
     </button>
   );
@@ -257,7 +260,7 @@ export default function OkonomiPage() {
         <div className="text-center py-16 text-slate-400 font-medium">Ingen oppdrag å vise</div>
       ) : (
         <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-          <div className="grid grid-cols-[1fr_130px_140px_140px_140px] border-b border-slate-100 bg-slate-50">
+          <div className="grid grid-cols-[1fr_155px_140px_140px_140px] border-b border-slate-100 bg-slate-50">
             {[
               { label: "Sak", hint: "" },
               { label: "Honorar", hint: "brutto / netto" },
@@ -276,20 +279,16 @@ export default function OkonomiPage() {
               <CaseRow key={c.id} userId={user!.uid} c={c} minutes={minutesByCaseId[c.id] ?? 0} globalRate={globalRate} />
             ))}
             {filtered.length > 0 && (
-              <div className="grid grid-cols-[1fr_130px_140px_140px_140px] bg-slate-50 border-t border-slate-200">
+              <div className="grid grid-cols-[1fr_155px_140px_140px_140px] bg-slate-50 border-t border-slate-200">
                 <div className="px-4 py-3 flex items-center justify-end">
                   <span className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Sum vist</span>
                 </div>
                 <div className="px-4 py-3 border-l border-slate-200">
-                  <div className="flex items-baseline gap-1.5">
-                    <p className="text-sm font-bold text-slate-900">{formatNok(filteredSum.brutto)}</p>
-                    <span className="text-xs text-slate-400">brutto</span>
-                  </div>
+                  <p className="text-sm font-bold text-slate-900">{formatNok(filteredSum.brutto)}</p>
                   {filteredSum.netto !== filteredSum.brutto && (
-                    <div className="flex items-baseline gap-1.5">
-                      <p className="text-xs font-semibold text-emerald-600">{formatNok(filteredSum.netto)}</p>
-                      <span className="text-xs text-slate-400">netto</span>
-                    </div>
+                    <p className="text-xs font-semibold text-emerald-700 mt-0.5">
+                      {formatNok(filteredSum.netto)} <span className="text-slate-400 font-normal">netto</span>
+                    </p>
                   )}
                 </div>
                 <div className="col-span-3 border-l border-slate-200 bg-slate-50/50"></div>
@@ -315,8 +314,8 @@ function BigStat({ label, value, sub, detail, green, warn }: {
       <p className={cn("text-xl font-bold",
         warn ? "text-amber-700" : green ? "text-emerald-700" : "text-slate-900"
       )}>{value}</p>
+      {sub && <p className={cn("text-sm mt-1 font-semibold", warn ? "text-amber-600" : green ? "text-emerald-600" : "text-slate-700")}>{sub}</p>}
       {detail && <p className="text-xs text-slate-400 mt-0.5">{detail}</p>}
-      {sub && <p className={cn("text-xs mt-0.5 font-medium", warn ? "text-amber-600" : green ? "text-emerald-600" : "text-slate-500")}>{sub}</p>}
     </div>
   );
 }
@@ -351,7 +350,7 @@ function CaseRow({ userId, c, minutes, globalRate }: {
   };
 
   return (
-    <div className={cn("grid grid-cols-[1fr_130px_140px_140px_140px] hover:bg-slate-50/70 transition-colors", avvik && "bg-amber-50/30")}>
+    <div className={cn("grid grid-cols-[1fr_155px_140px_140px_140px] hover:bg-slate-50/70 transition-colors", avvik && "bg-amber-50/30")}>
       {/* Sak */}
       <div className="px-4 py-3 cursor-pointer min-w-0" onClick={() => router.push(`/cases/${c.id}`)}>
         <div className="flex items-start gap-1.5">
@@ -374,19 +373,17 @@ function CaseRow({ userId, c, minutes, globalRate }: {
       <div className="px-4 py-3 border-l border-slate-100">
         {brutto > 0 ? (
           <>
-            <div className="flex items-baseline gap-1.5">
-              <p className="text-sm font-semibold text-slate-800">{formatNok(brutto)}</p>
-              <span className="text-xs text-slate-300">brutto</span>
-            </div>
-            {netto != null && (
-              <div className="flex items-baseline gap-1.5">
-                <p className="text-xs font-medium text-emerald-600">{formatNok(netto)}</p>
-                <span className="text-xs text-slate-300">netto</span>
-              </div>
+            <p className="text-sm font-semibold text-slate-800">{formatNok(brutto)}</p>
+            {netto != null && netto !== brutto && (
+              <p className="text-xs font-medium text-emerald-700 mt-0.5">
+                {formatNok(netto)} <span className="text-slate-400 font-normal">netto</span>
+              </p>
             )}
-            <InlineRateEdit value={c.skattetrekk} globalRate={globalRate}
-              onSave={async (v) => { await updateCase(userId, c.id, { skattetrekk: v }); toast.success("Oppdatert"); }}
-            />
+            <div className="mt-1">
+              <InlineRateEdit value={c.skattetrekk} globalRate={globalRate}
+                onSave={async (v) => { await updateCase(userId, c.id, { skattetrekk: v }); toast.success("Oppdatert"); }}
+              />
+            </div>
           </>
         ) : <span className="text-sm text-slate-300">—</span>}
       </div>
