@@ -313,10 +313,19 @@ export default function CasesPage() {
           ))}
         </div>
       ) : (
-        <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 bg-white">
-          {filtered.map((c) => (
-            <CaseRow key={c.id} c={c} {...sharedProps} />
-          ))}
+        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div className="grid grid-cols-[1fr_150px_170px_60px_36px] px-4 py-2.5 bg-slate-50 border-b border-slate-200">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Sak</p>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3">Lærested</p>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3">Frist</p>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-2 text-right">Timer</p>
+            <div />
+          </div>
+          <div className="divide-y divide-slate-100">
+            {filtered.map((c) => (
+              <CaseRow key={c.id} c={c} {...sharedProps} />
+            ))}
+          </div>
         </div>
       )}
 
@@ -560,9 +569,10 @@ function CaseRow({ c, router, minutesByCaseId, categories, onDelete }: {
     && c.status === "karakter_satt";
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors group">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
+    <div className="grid grid-cols-[1fr_150px_170px_60px_36px] items-center px-4 py-3 hover:bg-slate-50 transition-colors group">
+      {/* Col 1: Title + badges + meta */}
+      <div className="min-w-0 pr-4">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <Link href={`/cases/${c.id}`} className="font-medium text-slate-900 hover:underline leading-snug">
             {c.title}
           </Link>
@@ -576,63 +586,72 @@ function CaseRow({ c, router, minutesByCaseId, categories, onDelete }: {
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-          {c.description && (
-            <span className="text-xs text-slate-400 truncate max-w-xs">{c.description}</span>
-          )}
-          {c.laerested && (
-            <span className="text-xs text-slate-400 flex items-center gap-1">
-              <GraduationCap className="h-3 w-3" />{c.laerested}
-            </span>
-          )}
-          {c.deadline && (
+        {(c.description || c.contactName) && (
+          <p className="text-xs text-slate-400 mt-0.5 truncate">
+            {c.description || (c.contactName && `Medsensor: ${c.contactName}`)}
+          </p>
+        )}
+      </div>
+
+      {/* Col 2: Lærested */}
+      <div className="px-3 min-w-0">
+        {c.laerested ? (
+          <span className="text-xs text-slate-500 flex items-center gap-1" title={c.laerested}>
+            <GraduationCap className="h-3 w-3 shrink-0 text-slate-400" />
+            <span className="truncate">{c.laerested}</span>
+          </span>
+        ) : (
+          <span className="text-slate-200 text-xs">—</span>
+        )}
+      </div>
+
+      {/* Col 3: Frist + startDate + pace */}
+      <div className="px-3 min-w-0">
+        {c.deadline ? (
+          <div>
             <span className={cn(
               "text-xs flex items-center gap-1",
               deadlineOverdue ? "text-red-500 font-medium"
                 : deadlineHeld ? "text-emerald-600 font-medium"
-                : "text-slate-400"
+                : "text-slate-500"
             )}>
-              <CalendarDays className="h-3 w-3" />
+              <CalendarDays className="h-3 w-3 shrink-0" />
               {deadlineHeld
-                ? `Frist holdt: ${format(c.deadline, "d. MMM yyyy", { locale: nb })}`
-                : `Frist: ${format(c.deadline, "d. MMM yyyy", { locale: nb })}${deadlineOverdue ? " \u2014 utg\u00e5tt" : ""}`
+                ? `Holdt ${format(c.deadline, "d. MMM yy", { locale: nb })}`
+                : `${format(c.deadline, "d. MMM yyyy", { locale: nb })}${deadlineOverdue ? " – utgått" : ""}`
               }
             </span>
-          )}
-          {c.startDate && (
-            <span className="text-xs text-slate-400 flex items-center gap-1">
-              <CalendarDays className="h-3 w-3" />
-              {format(c.startDate, "d. MMM yyyy", { locale: nb })}
-            </span>
-          )}
-          {c.delfrister && c.delfrister.length > 0 && (
-            [...c.delfrister]
-              .sort((a, b) => a.date.getTime() - b.date.getTime())
-              .map((d, i) => {
-                const overdue = isPast(d.date) && !isToday(d.date) && c.status !== "avsluttet";
-                return (
-                  <span key={i} className={cn(
-                    "text-xs flex items-center gap-1",
-                    overdue ? "text-red-500 font-medium" : "text-slate-400"
-                  )}>
-                    <CalendarDays className="h-3 w-3" />
-                    {d.label ? `${d.label}: ` : ""}{format(d.date, "d. MMM yyyy", { locale: nb })}
-                  </span>
-                );
-              })
-          )}
-          <PaceBadge c={c} />
-        </div>
-      </div>
-      <div className="flex items-center gap-3 shrink-0">
-        {totalMin > 0 && (
-          <span className="text-xs text-slate-500 flex items-center gap-1 font-medium">
-            <Clock className="h-3.5 w-3.5" />{minutesToHours(totalMin)}
+            {c.startDate && (
+              <span className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                <CalendarDays className="h-3 w-3 shrink-0" />
+                {format(c.startDate, "d. MMM yyyy", { locale: nb })}
+              </span>
+            )}
+            <PaceBadge c={c} />
+          </div>
+        ) : c.startDate ? (
+          <span className="text-xs text-slate-400 flex items-center gap-1">
+            <CalendarDays className="h-3 w-3 shrink-0" />
+            {format(c.startDate, "d. MMM yyyy", { locale: nb })}
           </span>
+        ) : (
+          <span className="text-slate-200 text-xs">—</span>
         )}
-        <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-          <CaseMenu c={c} router={router} onDelete={onDelete} />
-        </div>
+      </div>
+
+      {/* Col 4: Timer */}
+      <div className="px-2">
+        <span className={cn(
+          "text-xs flex items-center gap-0.5 justify-end font-medium",
+          totalMin > 0 ? "text-slate-500" : "text-slate-300"
+        )}>
+          <Clock className="h-3 w-3" />{minutesToHours(totalMin)}
+        </span>
+      </div>
+
+      {/* Col 5: Menu */}
+      <div className="flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+        <CaseMenu c={c} router={router} onDelete={onDelete} />
       </div>
     </div>
   );
