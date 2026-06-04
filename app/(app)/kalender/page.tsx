@@ -196,6 +196,7 @@ export default function KalenderPage() {
                     .sort((a, b) => {
                       if (a.time && !b.time) return -1;
                       if (!a.time && b.time) return 1;
+                      if (a.time && b.time) return a.time.localeCompare(b.time);
                       return 0;
                     });
                   const dayHasCollision = dayEvents.some(e => collisions.has(e.id));
