@@ -25,7 +25,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CheckCircle2, Upload, Download, Trash2, FileSignature, Loader2, X, Share2 } from "lucide-react";
+import { CheckCircle2, Upload, Download, Trash2, FileSignature, Loader2, X, Share2, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { nb } from "date-fns/locale";
 import { toast } from "sonner";
@@ -48,12 +49,16 @@ export function SignertAvtaleSection({ userId, caseData, onUpdate, compact = fal
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [selectedCaseIds, setSelectedCaseIds] = useState<Set<string>>(new Set());
   const [copying, setCopying] = useState(false);
+  const [caseSearch, setCaseSearch] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { cases: allCases } = useCases(userId);
 
   const isSigned = caseData.signertOgInnsendt;
 
   const otherCases = allCases.filter((c) => c.id !== caseData.id);
+  const filteredCases = caseSearch.trim()
+    ? otherCases.filter((c) => c.title.toLowerCase().includes(caseSearch.toLowerCase()))
+    : otherCases;
 
   const toggleCaseSelection = (id: string) => {
     setSelectedCaseIds((prev) => {
@@ -235,7 +240,7 @@ export function SignertAvtaleSection({ userId, caseData, onUpdate, compact = fal
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-                onClick={() => { setSelectedCaseIds(new Set()); setCopyDialogOpen(true); }}
+                onClick={() => { setSelectedCaseIds(new Set()); setCaseSearch(""); setCopyDialogOpen(true); }}
               >
                 <Share2 className="h-3 w-3 mr-1.5" />
                 Tilordne til flere saker
@@ -302,11 +307,20 @@ export function SignertAvtaleSection({ userId, caseData, onUpdate, compact = fal
               Velg sakene som skal få samme arbeidsavtale{caseData.signertAvtaleNavn ? ` («${caseData.signertAvtaleNavn}»)` : ""}.
             </DialogDescription>
           </DialogHeader>
-          <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 rounded-lg border border-slate-200">
-            {otherCases.length === 0 ? (
-              <p className="text-sm text-slate-500 text-center py-6">Ingen andre saker</p>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+            <Input
+              placeholder="Søk etter sak…"
+              value={caseSearch}
+              onChange={(e) => setCaseSearch(e.target.value)}
+              className="pl-8 h-8 text-sm"
+            />
+          </div>
+          <div className="max-h-64 overflow-y-auto divide-y divide-slate-100 rounded-lg border border-slate-200">
+            {filteredCases.length === 0 ? (
+              <p className="text-sm text-slate-500 text-center py-6">{otherCases.length === 0 ? "Ingen andre saker" : "Ingen treff"}</p>
             ) : (
-              otherCases.map((c) => (
+              filteredCases.map((c) => (
                 <label key={c.id} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-slate-50 select-none">
                   <input
                     type="checkbox"
@@ -329,7 +343,7 @@ export function SignertAvtaleSection({ userId, caseData, onUpdate, compact = fal
             <div className="flex items-center gap-2 text-xs text-slate-500">
               <button
                 className="hover:text-indigo-600"
-                onClick={() => setSelectedCaseIds(new Set(otherCases.map((c) => c.id)))}
+                onClick={() => setSelectedCaseIds(new Set(filteredCases.map((c) => c.id)))}
               >
                 Velg alle
               </button>
