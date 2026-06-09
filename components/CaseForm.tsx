@@ -477,12 +477,23 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
                 />
               </PopoverContent>
             </Popover>
-            <Input
-              type="time"
-              value={m.tid ?? ""}
-              onChange={(e) => updateMote(i, "tid", e.target.value)}
-              className="w-24 text-sm h-8 shrink-0"
-            />
+            <div className="flex items-center gap-1 shrink-0">
+              <Input
+                type="time"
+                value={m.tid ?? ""}
+                onChange={(e) => updateMote(i, "tid", e.target.value)}
+                className="w-24 text-sm h-8"
+                title="Starttid"
+              />
+              <span className="text-xs text-slate-400 select-none">–</span>
+              <Input
+                type="time"
+                value={m.sluttTid ?? ""}
+                onChange={(e) => updateMote(i, "sluttTid", e.target.value)}
+                className="w-24 text-sm h-8"
+                title="Sluttid"
+              />
+            </div>
             <button
               type="button"
               onClick={() => removeMote(i)}

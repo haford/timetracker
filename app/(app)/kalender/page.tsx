@@ -21,6 +21,7 @@ type CalEvent = {
   label: string;
   date: Date;
   time?: string;
+  endTime?: string;
   kind: "frist" | "delfrist" | "mote";
 };
 
@@ -36,7 +37,7 @@ function getEvents(cases: Case[]): CalEvent[] {
       events.push({ id: `${c.id}-delfrist-${seq++}`, caseId: c.id, caseTitle: c.title, label: d.label || "Delfrist", date: d.date, kind: "delfrist" });
     }
     for (const m of c.moter ?? []) {
-      events.push({ id: `${c.id}-mote-${seq++}`, caseId: c.id, caseTitle: c.title, label: m.tittel || "MÃ¸te", date: m.dato, time: m.tid, kind: "mote" });
+      events.push({ id: `${c.id}-mote-${seq++}`, caseId: c.id, caseTitle: c.title, label: m.tittel || "M\u00f8te", date: m.dato, time: m.tid, endTime: m.sluttTid, kind: "mote" });
     }
   }
   return events;
@@ -233,7 +234,7 @@ export default function KalenderPage() {
                                 : KIND_CHIP[ev.kind],
                             )}>
                               {isColliding && <AlertTriangle className="inline h-2.5 w-2.5 mr-0.5 -mt-px" />}
-                              {ev.time && <span className="font-bold mr-0.5">{ev.time} </span>}
+                              {ev.time && <span className="font-bold mr-0.5">{ev.time}{ev.endTime ? `\u2013${ev.endTime}` : ""} </span>}
                               {ev.label !== "Frist" && ev.label !== "Delfrist" && ev.label !== "MÃ¸te"
                                 ? ev.label
                                 : ev.caseTitle}
@@ -263,7 +264,7 @@ export default function KalenderPage() {
                   <Link key={ev.id} href={`/cases/${ev.caseId}`} className="block">
                     <div className="rounded-lg border bg-red-50 border-red-200 px-3 py-2 hover:bg-red-100 transition-colors">
                       <p className="text-xs font-bold text-red-700 truncate">
-                        {ev.time ? `${ev.time} Â· ` : ""}{ev.caseTitle}
+                        {ev.time ? `${ev.time}${ev.endTime ? `\u2013${ev.endTime}` : ""} \u00b7 ` : ""}{ev.caseTitle}
                       </p>
                       <p className="text-[11px] text-red-500 mt-0.5 flex items-center justify-between">
                         <span>{ev.label}</span>
@@ -297,7 +298,7 @@ export default function KalenderPage() {
                       )}>
                         <p className={cn("text-xs font-bold truncate flex items-center gap-1", isColliding && "text-red-700")}>
                           {isColliding && <AlertTriangle className="h-3 w-3 shrink-0" />}
-                          {ev.time ? `${ev.time} Â· ` : ""}{ev.caseTitle}
+                          {ev.time ? `${ev.time}${ev.endTime ? `\u2013${ev.endTime}` : ""} \u00b7 ` : ""}{ev.caseTitle}
                         </p>
                         <p className={cn("text-[11px] opacity-80 mt-0.5 flex items-center justify-between", isColliding && "text-red-600")}>
                           <span>{ev.label}</span>

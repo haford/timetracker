@@ -88,7 +88,11 @@ export const deleteCaseDocument = async (
   caseId: string,
   document: CaseDocument
 ): Promise<void> => {
-  await deleteObject(ref(getFirebaseStorage(), document.storagePath));
+  try {
+    await deleteObject(ref(getFirebaseStorage(), document.storagePath));
+  } catch (err: unknown) {
+    if ((err as { code?: string })?.code !== "storage/object-not-found") throw err;
+  }
   await deleteDoc(doc(getFirebaseDb(), "users", userId, "cases", caseId, "documents", document.id));
 };
 
@@ -123,7 +127,11 @@ export const uploadSignertAvtale = (
 };
 
 export const deleteSignertAvtale = async (storagePath: string): Promise<void> => {
-  await deleteObject(ref(getFirebaseStorage(), storagePath));
+  try {
+    await deleteObject(ref(getFirebaseStorage(), storagePath));
+  } catch (err: unknown) {
+    if ((err as { code?: string })?.code !== "storage/object-not-found") throw err;
+  }
 };
 
 export const uploadLonnsslipp = (
@@ -149,5 +157,9 @@ export const uploadLonnsslipp = (
 };
 
 export const deleteLonnsslipp = async (storagePath: string): Promise<void> => {
-  await deleteObject(ref(getFirebaseStorage(), storagePath));
+  try {
+    await deleteObject(ref(getFirebaseStorage(), storagePath));
+  } catch (err: unknown) {
+    if ((err as { code?: string })?.code !== "storage/object-not-found") throw err;
+  }
 };

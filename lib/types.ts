@@ -31,7 +31,8 @@ export interface Delfrist {
 export interface Mote {
   tittel: string;
   dato: Date;
-  tid?: string; // "HH:mm"
+  tid?: string;      // "HH:mm" starttid
+  sluttTid?: string; // "HH:mm" sluttid
 }
 
 export interface GradeProgress {

@@ -117,10 +117,11 @@ const caseFromDoc = (d: { id: string; data: () => Record<string, unknown> }): Ca
       label: d.label as string,
       date: toDate(d.date as Timestamp),
     })),
-    moter: ((data.moter as Array<{tittel: string; dato: Timestamp; tid?: string}>) || []).map(m => ({
+    moter: ((data.moter as Array<{tittel: string; dato: Timestamp; tid?: string; sluttTid?: string}>) || []).map(m => ({
       tittel: m.tittel as string,
       dato: toDate(m.dato as Timestamp),
       tid: m.tid as string | undefined,
+      sluttTid: m.sluttTid as string | undefined,
     })),
   };
 };
@@ -150,6 +151,7 @@ export const addCase = (
       tittel: m.tittel,
       dato: Timestamp.fromDate(m.dato),
       ...(m.tid ? { tid: m.tid } : {}),
+      ...(m.sluttTid ? { sluttTid: m.sluttTid } : {}),
     })),
     createdAt: now,
     updatedAt: now,
@@ -198,6 +200,7 @@ export const updateCase = (
       tittel: m.tittel,
       dato: Timestamp.fromDate(m.dato),
       ...(m.tid ? { tid: m.tid } : {}),
+      ...(m.sluttTid ? { sluttTid: m.sluttTid } : {}),
     }));
   }
 
