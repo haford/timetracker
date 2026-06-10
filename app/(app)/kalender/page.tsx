@@ -11,7 +11,7 @@ import {
 } from "date-fns";
 import { nb } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, AlertTriangle, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import type { Case } from "@/lib/types";
 
 type CalEvent = {
@@ -23,21 +23,23 @@ type CalEvent = {
   time?: string;
   endTime?: string;
   kind: "frist" | "delfrist" | "mote";
+  avsluttet?: boolean;
 };
 
-function getEvents(cases: Case[]): CalEvent[] {
+function getEvents(cases: Case[], includeAvsluttede = false): CalEvent[] {
   const events: CalEvent[] = [];
   let seq = 0;
   for (const c of cases) {
-    if (c.status === "avsluttet") continue;
+    if (c.status === "avsluttet" && !includeAvsluttede) continue;
+    const avsluttet = c.status === "avsluttet";
     if (c.deadline) {
-      events.push({ id: `${c.id}-frist-${seq++}`, caseId: c.id, caseTitle: c.title, label: "Frist", date: c.deadline, kind: "frist" });
+      events.push({ id: `${c.id}-frist-${seq++}`, caseId: c.id, caseTitle: c.title, label: "Frist", date: c.deadline, kind: "frist", avsluttet });
     }
     for (const d of c.delfrister ?? []) {
-      events.push({ id: `${c.id}-delfrist-${seq++}`, caseId: c.id, caseTitle: c.title, label: d.label || "Delfrist", date: d.date, kind: "delfrist" });
+      events.push({ id: `${c.id}-delfrist-${seq++}`, caseId: c.id, caseTitle: c.title, label: d.label || "Delfrist", date: d.date, kind: "delfrist", avsluttet });
     }
     for (const m of c.moter ?? []) {
-      events.push({ id: `${c.id}-mote-${seq++}`, caseId: c.id, caseTitle: c.title, label: m.tittel || "M\u00f8te", date: m.dato, time: m.tid, endTime: m.sluttTid, kind: "mote" });
+      events.push({ id: `${c.id}-mote-${seq++}`, caseId: c.id, caseTitle: c.title, label: m.tittel || "M\u00f8te", date: m.dato, time: m.tid, endTime: m.sluttTid, kind: "mote", avsluttet });
     }
   }
   return events;
@@ -89,8 +91,9 @@ export default function KalenderPage() {
     d.setDate(1);
     return d;
   });
+  const [showAvsluttede, setShowAvsluttede] = useState(false);
 
-  const events = useMemo(() => getEvents(cases), [cases]);
+  const events = useMemo(() => getEvents(cases, showAvsluttede), [cases, showAvsluttede]);
   const collisions = useMemo(() => findCollisions(events), [events]);
   const hasCollisions = collisions.size > 0;
 
@@ -137,6 +140,19 @@ export default function KalenderPage() {
           </button>
           <button onClick={() => setCurrentMonth(m => addMonths(m, 1))} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
             <ChevronRight className="h-5 w-5 text-slate-600" />
+          </button>
+          <button
+            onClick={() => setShowAvsluttede(v => !v)}
+            className={cn(
+              "ml-2 flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors",
+              showAvsluttede
+                ? "bg-slate-700 border-slate-700 text-white hover:bg-slate-800"
+                : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
+            )}
+            title={showAvsluttede ? "Skjul avsluttede saker" : "Vis avsluttede saker"}
+          >
+            {showAvsluttede ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            Avsluttede
           </button>
         </div>
       </div>
@@ -231,7 +247,9 @@ export default function KalenderPage() {
                               "block truncate text-[11px] font-medium px-1.5 py-0.5 rounded border leading-tight transition-colors",
                               isColliding
                                 ? "bg-red-100 text-red-700 border-red-400 ring-1 ring-red-400 hover:bg-red-200"
-                                : KIND_CHIP[ev.kind],
+                                : ev.avsluttet
+                                  ? "bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 opacity-70"
+                                  : KIND_CHIP[ev.kind],
                             )}>
                               {isColliding && <AlertTriangle className="inline h-2.5 w-2.5 mr-0.5 -mt-px" />}
                               {ev.time && <span className="font-bold mr-0.5">{ev.time}{ev.endTime ? `\u2013${ev.endTime}` : ""} </span>}
