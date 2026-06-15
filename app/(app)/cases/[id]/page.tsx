@@ -6,8 +6,14 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useCategories } from "@/hooks/useCategories";
 import { useTimeEntries } from "@/hooks/useTimeEntries";
-import { getCase, deleteTimeEntry, updateCase } from "@/lib/firestore";
-import { STATUS_LABELS, STATUS_COLORS, type Case, type CaseStatus } from "@/lib/types";
+import { useBegrunnelser } from "@/hooks/useBegrunnelser";
+import { getCase, deleteTimeEntry, updateCase, deleteBegrunnelse, updateBegrunnelse } from "@/lib/firestore";
+import {
+  STATUS_LABELS, STATUS_COLORS,
+  BEGRUNNELSE_STATUS_LABELS, BEGRUNNELSE_STATUS_COLORS,
+  type Case, type CaseStatus, type Begrunnelse, type BegrunnelseStatus,
+} from "@/lib/types";
+import { BegrunnelseForm } from "@/components/BegrunnelseForm";
 import { CategoryBadge } from "@/components/CategoryBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -32,11 +38,17 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Clock, Pencil, Plus, Trash2, CalendarDays, User, Banknote, Mail, Target } from "lucide-react";
+import { Clock, Pencil, Plus, Trash2, CalendarDays, User, Banknote, Mail, Target, FileText, AlertTriangle, ExternalLink } from "lucide-react";
 import { CaseDocuments } from "@/components/CaseDocuments";
 import { SignertAvtaleSection } from "@/components/SignertAvtaleSection";
 import { UtbetalingSection } from "@/components/UtbetalingSection";
-import { format, isPast, isToday, isFuture } from "date-fns";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { format, isPast, isToday, isFuture, differenceInDays } from "date-fns";
 import { nb } from "date-fns/locale";
 import { toast } from "sonner";
 
@@ -57,6 +69,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
   const [loading, setLoading] = useState(true);
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
   const [newProgress, setNewProgress] = useState("");
+  const [showBegrunnelseForm, setShowBegrunnelseForm] = useState(false);
+  const [editBegrunnelse, setEditBegrunnelse] = useState<Begrunnelse | null>(null);
+  const [deleteBegrunnelseId, setDeleteBegrunnelseId] = useState<string | null>(null);
+  const { begrunnelser } = useBegrunnelser(user?.uid, id);
   const router = useRouter();
 
   useEffect(() => {
@@ -79,6 +95,22 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
     await deleteTimeEntry(user.uid, deleteEntryId);
     toast.success("Timeentry slettet");
     setDeleteEntryId(null);
+  };
+
+  // Auto-set status to "begrunnelser" when begrunnelser are added and case is avsluttet
+  useEffect(() => {
+    if (!user || !caseData) return;
+    if (begrunnelser.length > 0 && caseData.status === "avsluttet") {
+      updateCase(user.uid, id, { status: "begrunnelser" });
+      setCaseData((prev) => prev ? { ...prev, status: "begrunnelser" } : prev);
+    }
+  }, [begrunnelser, caseData?.status]);
+
+  const handleDeleteBegrunnelse = async () => {
+    if (!deleteBegrunnelseId || !user) return;
+    await deleteBegrunnelse(user.uid, deleteBegrunnelseId);
+    toast.success("Begrunnelse slettet");
+    setDeleteBegrunnelseId(null);
   };
 
   const handleAddProgress = async () => {
@@ -494,6 +526,161 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
           </CardContent>
         </Card>
       )}
+
+      {/* Begrunnelser */}
+      <Card className="mt-6">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Begrunnelseskrav
+              {begrunnelser.length > 0 && (
+                <span className="text-xs font-semibold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full">
+                  {begrunnelser.length}
+                </span>
+              )}
+            </CardTitle>
+            <Button size="sm" onClick={() => setShowBegrunnelseForm(true)}>
+              <Plus className="h-4 w-4 mr-1" />
+              Legg til
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {begrunnelser.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Ingen begrunnelseskrav registrert
+            </p>
+          ) : (
+            <div className="divide-y">
+              {begrunnelser.map((b) => {
+                const daysLeft = differenceInDays(b.fristForBegrunnelse, new Date());
+                const overdue = isPast(b.fristForBegrunnelse) && !isToday(b.fristForBegrunnelse) && b.status !== "sendt";
+                const urgent = daysLeft <= 3 && b.status !== "sendt";
+                return (
+                  <div key={b.id} className="py-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium text-slate-800">{b.navn}</span>
+                          <span className="text-xs text-slate-400">#{b.kandidatnummer}</span>
+                          {b.karakter && (
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold">
+                              {b.karakter}
+                            </span>
+                          )}
+                          <span className={cn(
+                            "text-xs px-2 py-0.5 rounded-full font-medium",
+                            BEGRUNNELSE_STATUS_COLORS[b.status]
+                          )}>
+                            {BEGRUNNELSE_STATUS_LABELS[b.status]}
+                          </span>
+                          {(overdue || urgent) && (
+                            <span className={cn(
+                              "text-xs font-semibold flex items-center gap-1",
+                              overdue ? "text-red-600" : "text-amber-600"
+                            )}>
+                              <AlertTriangle className="h-3 w-3" />
+                              {overdue ? "Frist utgått" : isToday(b.fristForBegrunnelse) ? "I dag!" : `${daysLeft}d igjen`}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-slate-400 flex-wrap">
+                          <span>{b.epost}</span>
+                          <span>Frist begrunnelse: <span className={cn("font-medium", overdue ? "text-red-600" : "text-slate-600")}>{format(b.fristForBegrunnelse, "d. MMM yyyy", { locale: nb })}</span></span>
+                          {b.fristForABeOmBegrunnelse && (
+                            <span>Frist krav: <span className="font-medium text-slate-600">{format(b.fristForABeOmBegrunnelse, "d. MMM yyyy", { locale: nb })}</span></span>
+                          )}
+                          {b.begrunnelseskravLenke && (
+                            <a
+                              href={b.begrunnelseskravLenke}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-indigo-500 hover:text-indigo-700"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              E-post
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => setEditBegrunnelse(b)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-red-500 hover:text-red-600"
+                          onClick={() => setDeleteBegrunnelseId(b.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Begrunnelse – legg til dialog */}
+      <Dialog open={showBegrunnelseForm} onOpenChange={(o) => !o && setShowBegrunnelseForm(false)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Registrer begrunnelseskrav</DialogTitle>
+          </DialogHeader>
+          {user && (
+            <BegrunnelseForm
+              userId={user.uid}
+              caseId={id}
+              onDone={() => setShowBegrunnelseForm(false)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Begrunnelse – rediger dialog */}
+      <Dialog open={!!editBegrunnelse} onOpenChange={(o) => !o && setEditBegrunnelse(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Rediger begrunnelseskrav</DialogTitle>
+          </DialogHeader>
+          {editBegrunnelse && user && (
+            <BegrunnelseForm
+              userId={user.uid}
+              caseId={id}
+              existing={editBegrunnelse}
+              onDone={() => setEditBegrunnelse(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Begrunnelse – slett dialog */}
+      <AlertDialog open={!!deleteBegrunnelseId} onOpenChange={(o) => !o && setDeleteBegrunnelseId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Slett begrunnelseskrav?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Dette vil slette begrunnelseskravet permanent.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Avbryt</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteBegrunnelse} className="bg-red-600 hover:bg-red-700">
+              Slett
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Dokumenter */}
       {user && (

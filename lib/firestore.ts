@@ -15,7 +15,7 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { getFirebaseDb } from "./firebase";
-import type { Case, Category, TimeEntry, CaseStatus, UserSettings, Delfrist, Mote } from "./types";
+import type { Case, Category, TimeEntry, CaseStatus, UserSettings, Delfrist, Mote, Begrunnelse, BegrunnelseStatus } from "./types";
 
 // ──────────────────────────────────────────
 // Helpers
@@ -302,3 +302,78 @@ export const subscribeUserSettings = (
 
 export const updateUserSettings = (userId: string, data: Partial<UserSettings>) =>
   setDoc(settingsDoc(userId), data, { merge: true });
+
+// ──────────────────────────────────────────
+// Begrunnelser
+// ──────────────────────────────────────────
+
+const begrunnelseFromDoc = (d: { id: string; data: () => Record<string, unknown> }): Begrunnelse => {
+  const data = d.data();
+  return {
+    id: d.id,
+    caseId: data.caseId as string,
+    navn: data.navn as string,
+    epost: data.epost as string,
+    kandidatnummer: data.kandidatnummer as string,
+    karakter: data.karakter as string,
+    fristForBegrunnelse: toDate(data.fristForBegrunnelse as Timestamp),
+    status: data.status as BegrunnelseStatus,
+    begrunnelseskravLenke: (data.begrunnelseskravLenke as string) || undefined,
+    fristForABeOmBegrunnelse: data.fristForABeOmBegrunnelse
+      ? toDate(data.fristForABeOmBegrunnelse as Timestamp)
+      : undefined,
+    createdAt: toDate(data.createdAt as Timestamp),
+    updatedAt: toDate(data.updatedAt as Timestamp),
+  };
+};
+
+export const subscribeBegrunnelser = (
+  userId: string,
+  cb: (items: Begrunnelse[]) => void,
+  caseId?: string
+): Unsubscribe => {
+  let q = query(userCol(userId, "begrunnelser"), orderBy("fristForBegrunnelse", "asc"));
+  if (caseId) {
+    q = query(
+      userCol(userId, "begrunnelser"),
+      where("caseId", "==", caseId),
+      orderBy("fristForBegrunnelse", "asc")
+    );
+  }
+  return onSnapshot(q, (snap) => cb(snap.docs.map(begrunnelseFromDoc)));
+};
+
+export const addBegrunnelse = (
+  userId: string,
+  data: Omit<Begrunnelse, "id" | "createdAt" | "updatedAt">
+) => {
+  const now = Timestamp.now();
+  return addDoc(userCol(userId, "begrunnelser"), {
+    ...data,
+    fristForBegrunnelse: Timestamp.fromDate(data.fristForBegrunnelse),
+    fristForABeOmBegrunnelse: data.fristForABeOmBegrunnelse
+      ? Timestamp.fromDate(data.fristForABeOmBegrunnelse)
+      : null,
+    createdAt: now,
+    updatedAt: now,
+  });
+};
+
+export const updateBegrunnelse = (
+  userId: string,
+  begrunnelseId: string,
+  data: Partial<Omit<Begrunnelse, "id" | "createdAt">>
+) => {
+  const update: Record<string, unknown> = { ...data, updatedAt: Timestamp.now() };
+  if ("fristForBegrunnelse" in data && data.fristForBegrunnelse)
+    update.fristForBegrunnelse = Timestamp.fromDate(data.fristForBegrunnelse);
+  if ("fristForABeOmBegrunnelse" in data)
+    update.fristForABeOmBegrunnelse = data.fristForABeOmBegrunnelse
+      ? Timestamp.fromDate(data.fristForABeOmBegrunnelse)
+      : null;
+  Object.keys(update).forEach((k) => update[k] === undefined && delete update[k]);
+  return updateDoc(doc(getFirebaseDb(), "users", userId, "begrunnelser", begrunnelseId), update);
+};
+
+export const deleteBegrunnelse = (userId: string, begrunnelseId: string) =>
+  deleteDoc(doc(getFirebaseDb(), "users", userId, "begrunnelser", begrunnelseId));

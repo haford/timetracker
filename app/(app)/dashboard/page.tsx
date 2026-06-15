@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCases } from "@/hooks/useCases";
 import { useTimeEntries } from "@/hooks/useTimeEntries";
 import { useCategories } from "@/hooks/useCategories";
+import { useBegrunnelser } from "@/hooks/useBegrunnelser";
 import { CategoryBadge } from "@/components/CategoryBadge";
 import { cn } from "@/lib/utils";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/types";
@@ -18,6 +19,8 @@ import {
   CalendarDays,
   ChevronRight,
   CalendarClock,
+  AlertTriangle,
+  FileText,
 } from "lucide-react";
 import {
   startOfDay,
@@ -25,6 +28,8 @@ import {
   startOfMonth,
   isAfter,
   differenceInDays,
+  isPast,
+  isToday,
   format,
 } from "date-fns";
 import { nb } from "date-fns/locale";
@@ -57,6 +62,7 @@ export default function DashboardPage() {
   const { cases } = useCases(user?.uid);
   const { entries } = useTimeEntries(user?.uid);
   const { categories } = useCategories(user?.uid);
+  const { begrunnelser } = useBegrunnelser(user?.uid);
 
   const now = new Date();
   const todayStart = startOfDay(now);
@@ -91,6 +97,14 @@ export default function DashboardPage() {
   const getCaseById = (id: string) => cases.find((c) => c.id === id);
 
   const overdueCount = upcomingDeadlines.filter((c) => c.daysLeft < 0).length;
+
+  const urgentBegrunnelser = useMemo(() => {
+    return begrunnelser
+      .filter((b) => b.status !== "sendt")
+      .map((b) => ({ ...b, daysLeft: differenceInDays(b.fristForBegrunnelse, todayStart) }))
+      .filter((b) => b.daysLeft <= 7)
+      .sort((a, b) => a.daysLeft - b.daysLeft);
+  }, [begrunnelser, todayStart]);
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -188,6 +202,52 @@ export default function DashboardPage() {
                   {/* Days badge */}
                   <span className={cn("shrink-0 text-xs font-bold px-2.5 py-1 rounded-full whitespace-nowrap", col.badge)}>
                     {deadlineLabel(c.daysLeft)}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Begrunnelser med nær frist */}
+      {urgentBegrunnelser.length > 0 && (
+        <div className="mb-6 rounded-2xl border border-orange-200 bg-orange-50 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-orange-100">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-orange-500" />
+              <span className="text-sm font-semibold text-orange-800">Begrunnelsesfrister</span>
+              <span className="text-xs font-bold bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">
+                {urgentBegrunnelser.length}
+              </span>
+            </div>
+            <Link
+              href="/begrunnelser"
+              className="flex items-center gap-0.5 text-xs font-medium text-orange-700 hover:text-orange-900"
+            >
+              Se alle <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+          <div className="divide-y divide-orange-100">
+            {urgentBegrunnelser.map((b) => {
+              const overdue = b.daysLeft < 0;
+              const today = b.daysLeft === 0;
+              return (
+                <Link
+                  key={b.id}
+                  href={`/cases/${b.caseId}`}
+                  className="flex items-center gap-4 px-5 py-3 hover:bg-orange-100/60 transition-colors"
+                >
+                  <div className={cn("w-1 h-9 rounded-full shrink-0", overdue ? "bg-red-500" : today ? "bg-amber-400" : "bg-orange-300")} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-800 truncate">{b.navn} <span className="text-slate-400 font-normal text-xs">#{b.kandidatnummer}</span></p>
+                    <p className="text-xs text-slate-500 truncate">{cases.find(c => c.id === b.caseId)?.title ?? b.caseId}</p>
+                  </div>
+                  <span className={cn(
+                    "shrink-0 text-xs font-bold px-2.5 py-1 rounded-full whitespace-nowrap",
+                    overdue ? "bg-red-100 text-red-700" : today ? "bg-amber-100 text-amber-700" : "bg-orange-100 text-orange-700"
+                  )}>
+                    {overdue ? `${Math.abs(b.daysLeft)}d over` : today ? "I dag!" : `${b.daysLeft}d`}
                   </span>
                 </Link>
               );

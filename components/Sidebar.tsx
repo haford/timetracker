@@ -14,6 +14,7 @@ import {
   LogOut,
   Banknote,
   CalendarDays,
+  FileText,
 } from "lucide-react";
 
 const navItems = [
@@ -21,6 +22,7 @@ const navItems = [
   { href: "/cases", label: "Saker", icon: FolderOpen },
   { href: "/kalender", label: "Kalender", icon: CalendarDays },
   { href: "/timer", label: "Timeføring", icon: Clock },
+  { href: "/begrunnelser", label: "Begrunnelser", icon: FileText },
   { href: "/categories", label: "Kategorier", icon: Tag },
   { href: "/reports", label: "Rapporter", icon: BarChart3 },
   { href: "/okonomi", label: "Økonomi", icon: Banknote },
