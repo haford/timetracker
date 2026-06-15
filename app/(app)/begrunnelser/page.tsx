@@ -144,7 +144,7 @@ export default function BegrunnelserPage() {
       {/* Filter */}
       <div className="mb-4 flex items-center gap-3">
         <span className="text-sm text-slate-500 shrink-0">Filtrer på sak:</span>
-        <Select value={filterCaseId} onValueChange={setFilterCaseId}>
+        <Select value={filterCaseId} onValueChange={(v) => setFilterCaseId(v ?? "all")}>
           <SelectTrigger className="w-72">
             <SelectValue />
           </SelectTrigger>
