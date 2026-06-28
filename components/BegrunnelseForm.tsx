@@ -24,24 +24,29 @@ interface Props {
   userId: string;
   caseId: string;
   existing?: Begrunnelse;
+  prefillFrom?: Begrunnelse;
   onDone: () => void;
 }
 
-export function BegrunnelseForm({ userId, caseId, existing, onDone }: Props) {
-  const [navn, setNavn] = useState(existing?.navn ?? "");
-  const [epost, setEpost] = useState(existing?.epost ?? "");
-  const [kandidatnummer, setKandidatnummer] = useState(existing?.kandidatnummer ?? "");
-  const [karakter, setKarakter] = useState(existing?.karakter ?? "");
+export function BegrunnelseForm({ userId, caseId, existing, prefillFrom, onDone }: Props) {
+  const source = existing ?? prefillFrom;
+  const isEditing = !!existing;
+  const isDuplicateMode = !!prefillFrom && !existing;
+
+  const [navn, setNavn] = useState(isDuplicateMode ? "" : (source?.navn ?? ""));
+  const [epost, setEpost] = useState(source?.epost ?? "");
+  const [kandidatnummer, setKandidatnummer] = useState(isDuplicateMode ? "" : (source?.kandidatnummer ?? ""));
+  const [karakter, setKarakter] = useState(isDuplicateMode ? "" : (source?.karakter ?? ""));
   const [fristForBegrunnelse, setFristForBegrunnelse] = useState(
-    existing?.fristForBegrunnelse ? format(existing.fristForBegrunnelse, "yyyy-MM-dd") : ""
+    source?.fristForBegrunnelse ? format(source.fristForBegrunnelse, "yyyy-MM-dd") : ""
   );
-  const [status, setStatus] = useState<BegrunnelseStatus>(existing?.status ?? "mottatt");
+  const [status, setStatus] = useState<BegrunnelseStatus>(source?.status ?? "mottatt");
   const [begrunnelseskravLenke, setBegrunnelseskravLenke] = useState(
-    existing?.begrunnelseskravLenke ?? ""
+    source?.begrunnelseskravLenke ?? ""
   );
   const [fristForABeOmBegrunnelse, setFristForABeOmBegrunnelse] = useState(
-    existing?.fristForABeOmBegrunnelse
-      ? format(existing.fristForABeOmBegrunnelse, "yyyy-MM-dd")
+    source?.fristForABeOmBegrunnelse
+      ? format(source.fristForABeOmBegrunnelse, "yyyy-MM-dd")
       : ""
   );
   const [saving, setSaving] = useState(false);
@@ -67,12 +72,12 @@ export function BegrunnelseForm({ userId, caseId, existing, onDone }: Props) {
           ? new Date(fristForABeOmBegrunnelse)
           : undefined,
       };
-      if (existing) {
+      if (isEditing && existing) {
         await updateBegrunnelse(userId, existing.id, payload);
         toast.success("Begrunnelse oppdatert");
       } else {
         await addBegrunnelse(userId, payload);
-        toast.success("Begrunnelse registrert");
+        toast.success(isDuplicateMode ? "Begrunnelse opprettet fra kopi" : "Begrunnelse registrert");
       }
       onDone();
     } catch {
@@ -174,7 +179,7 @@ export function BegrunnelseForm({ userId, caseId, existing, onDone }: Props) {
           Avbryt
         </Button>
         <Button type="submit" disabled={saving}>
-          {saving ? "Lagrer…" : existing ? "Oppdater" : "Registrer"}
+          {saving ? "Lagrer…" : isEditing ? "Oppdater" : "Registrer"}
         </Button>
       </div>
     </form>

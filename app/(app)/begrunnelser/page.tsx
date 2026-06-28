@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { useBegrunnelser } from "@/hooks/useBegrunnelser";
@@ -8,13 +8,11 @@ import { useCases } from "@/hooks/useCases";
 import { deleteBegrunnelse, updateBegrunnelse } from "@/lib/firestore";
 import {
   BEGRUNNELSE_STATUS_LABELS,
-  BEGRUNNELSE_STATUS_COLORS,
   type Begrunnelse,
   type BegrunnelseStatus,
 } from "@/lib/types";
 import { BegrunnelseForm } from "@/components/BegrunnelseForm";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -41,18 +39,18 @@ import {
 import { format, differenceInDays, isPast, isToday } from "date-fns";
 import { nb } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, ExternalLink, Pencil, Trash2, FileText } from "lucide-react";
+import { AlertTriangle, ExternalLink, Pencil, Trash2, FileText, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 function deadlineBadge(date: Date, done: boolean) {
   if (done) return null;
   const days = differenceInDays(date, new Date());
   if (isPast(date) && !isToday(date))
-    return <span className="text-xs font-bold text-red-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />Utgått</span>;
+    return <span className="text-[11px] font-bold text-red-600 inline-flex items-center gap-1 shrink-0"><AlertTriangle className="h-3 w-3" />Utgått</span>;
   if (isToday(date))
-    return <span className="text-xs font-bold text-amber-600">I dag!</span>;
+    return <span className="text-[11px] font-bold text-amber-600 shrink-0">I dag!</span>;
   if (days <= 3)
-    return <span className="text-xs font-semibold text-amber-600">{days} dag{days !== 1 ? "er" : ""} igjen</span>;
+    return <span className="text-[11px] font-semibold text-amber-600 shrink-0">{days} dag{days !== 1 ? "er" : ""} igjen</span>;
   return null;
 }
 
@@ -62,8 +60,30 @@ export default function BegrunnelserPage() {
   const { cases } = useCases(user?.uid);
 
   const [editItem, setEditItem] = useState<Begrunnelse | null>(null);
+  const [duplicateItem, setDuplicateItem] = useState<Begrunnelse | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [filterCaseId, setFilterCaseId] = useState<string>("all");
+  const [optimisticStatusById, setOptimisticStatusById] = useState<Record<string, BegrunnelseStatus>>({});
+  const [updatingStatusById, setUpdatingStatusById] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    // Clear optimistic overrides once snapshot has caught up to avoid stale local state.
+    setOptimisticStatusById((prev) => {
+      const next: Record<string, BegrunnelseStatus> = {};
+      for (const [id, status] of Object.entries(prev)) {
+        const item = begrunnelser.find((b) => b.id === id);
+        if (item && item.status !== status) {
+          next[id] = status;
+        }
+      }
+      return Object.keys(next).length === Object.keys(prev).length ? prev : next;
+    });
+  }, [begrunnelser]);
+
+  const effectiveBegrunnelser = useMemo(
+    () => begrunnelser.map((b) => ({ ...b, status: optimisticStatusById[b.id] ?? b.status })),
+    [begrunnelser, optimisticStatusById]
+  );
 
   const caseMap = useMemo(
     () => Object.fromEntries(cases.map((c) => [c.id, c])),
@@ -71,9 +91,9 @@ export default function BegrunnelserPage() {
   );
 
   const filtered = useMemo(() => {
-    if (filterCaseId === "all") return begrunnelser;
-    return begrunnelser.filter((b) => b.caseId === filterCaseId);
-  }, [begrunnelser, filterCaseId]);
+    if (filterCaseId === "all") return effectiveBegrunnelser;
+    return effectiveBegrunnelser.filter((b) => b.caseId === filterCaseId);
+  }, [effectiveBegrunnelser, filterCaseId]);
 
   const handleDelete = async () => {
     if (!deleteId || !user) return;
@@ -84,11 +104,28 @@ export default function BegrunnelserPage() {
 
   const handleStatusChange = async (b: Begrunnelse, newStatus: BegrunnelseStatus) => {
     if (!user) return;
-    await updateBegrunnelse(user.uid, b.id, { status: newStatus });
-    toast.success("Status oppdatert");
+    if (newStatus === b.status) return;
+
+    const previousStatus = b.status;
+    setOptimisticStatusById((prev) => ({ ...prev, [b.id]: newStatus }));
+    setUpdatingStatusById((prev) => ({ ...prev, [b.id]: true }));
+
+    try {
+      await updateBegrunnelse(user.uid, b.id, { status: newStatus });
+      toast.success("Status oppdatert");
+    } catch {
+      setOptimisticStatusById((prev) => ({ ...prev, [b.id]: previousStatus }));
+      toast.error("Kunne ikke oppdatere status");
+    } finally {
+      setUpdatingStatusById((prev) => {
+        const next = { ...prev };
+        delete next[b.id];
+        return next;
+      });
+    }
   };
 
-  const upcomingWarnings = begrunnelser.filter((b) => {
+  const upcomingWarnings = effectiveBegrunnelser.filter((b) => {
     if (b.status === "sendt") return false;
     const days = differenceInDays(b.fristForBegrunnelse, new Date());
     return days <= 3;
@@ -151,7 +188,7 @@ export default function BegrunnelserPage() {
           <SelectContent>
             <SelectItem value="all">Alle saker</SelectItem>
             {cases
-              .filter((c) => begrunnelser.some((b) => b.caseId === c.id))
+              .filter((c) => effectiveBegrunnelser.some((b) => b.caseId === c.id))
               .map((c) => (
                 <SelectItem key={c.id} value={c.id}>
                   {c.title}
@@ -173,16 +210,17 @@ export default function BegrunnelserPage() {
         </div>
       ) : (
         <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1024px] table-fixed text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Kandidat</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Sak</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Karakter</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Frist begrunnelse</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Frist be om begrunnelse</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
-                <th className="px-4 py-2.5" />
+                <th className="w-[280px] text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Kandidat</th>
+                <th className="w-[220px] text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Sak</th>
+                <th className="w-[90px] text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Karakter</th>
+                <th className="w-[160px] text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Frist begrunnelse</th>
+                <th className="w-[160px] text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Frist be om begrunnelse</th>
+                <th className="w-[220px] text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                <th className="w-[120px] px-4 py-2.5" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -190,46 +228,50 @@ export default function BegrunnelserPage() {
                 const done = b.status === "sendt";
                 return (
                   <tr key={b.id} className={cn("hover:bg-slate-50 transition-colors", done && "opacity-60")}>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-slate-800">{b.navn}</p>
-                      <p className="text-xs text-slate-400">{b.epost} · #{b.kandidatnummer}</p>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2 min-w-0 text-xs text-slate-400 whitespace-nowrap overflow-hidden">
+                        <span className="text-sm font-medium text-slate-800 truncate" title={b.navn}>{b.navn}</span>
+                        <span className="shrink-0">#{b.kandidatnummer}</span>
+                        <span className="truncate" title={b.epost}>{b.epost}</span>
+                      </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5">
                       <Link
                         href={`/cases/${b.caseId}`}
-                        className="text-indigo-600 hover:underline text-xs"
+                        className="text-indigo-600 hover:underline text-xs block truncate"
+                        title={caseMap[b.caseId]?.title ?? b.caseId}
                       >
                         {caseMap[b.caseId]?.title ?? b.caseId}
                       </Link>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5">
                       <span className="font-semibold text-slate-700">{b.karakter || "–"}</span>
                     </td>
-                    <td className="px-4 py-3">
-                      <p className="text-slate-700">
-                        {format(b.fristForBegrunnelse, "d. MMM yyyy", { locale: nb })}
-                      </p>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2 whitespace-nowrap overflow-hidden">
+                        <p className="text-slate-700 text-sm leading-5 shrink-0">
+                          {format(b.fristForBegrunnelse, "d. MMM yyyy", { locale: nb })}
+                        </p>
                       {deadlineBadge(b.fristForBegrunnelse, done)}
+                      </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5">
                       {b.fristForABeOmBegrunnelse ? (
-                        <>
-                          <p className="text-slate-700">
-                            {format(b.fristForABeOmBegrunnelse, "d. MMM yyyy", { locale: nb })}
-                          </p>
-                          {deadlineBadge(b.fristForABeOmBegrunnelse, done)}
-                        </>
+                        <p className="text-slate-700 text-sm leading-5">
+                          {format(b.fristForABeOmBegrunnelse, "d. MMM yyyy", { locale: nb })}
+                        </p>
                       ) : (
                         <span className="text-slate-400">–</span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
                         <Select
                           value={b.status}
                           onValueChange={(v) => handleStatusChange(b, v as BegrunnelseStatus)}
+                          disabled={Boolean(updatingStatusById[b.id])}
                         >
-                          <SelectTrigger className="h-7 text-xs w-44">
+                          <SelectTrigger className="h-8 text-xs w-full">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -253,8 +295,17 @@ export default function BegrunnelserPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-1">
+                    <td className="px-4 py-2.5">
+                      <div className="flex gap-0.5 justify-end">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => setDuplicateItem(b)}
+                          title="Dupliser og opprett nytt"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -277,9 +328,27 @@ export default function BegrunnelserPage() {
                 );
               })}
             </tbody>
-          </table>
+            </table>
+          </div>
         </div>
       )}
+
+      {/* Duplicate dialog */}
+      <Dialog open={!!duplicateItem} onOpenChange={(o) => !o && setDuplicateItem(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Dupliser begrunnelseskrav</DialogTitle>
+          </DialogHeader>
+          {duplicateItem && user && (
+            <BegrunnelseForm
+              userId={user.uid}
+              caseId={duplicateItem.caseId}
+              prefillFrom={duplicateItem}
+              onDone={() => setDuplicateItem(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Edit dialog */}
       <Dialog open={!!editItem} onOpenChange={(o) => !o && setEditItem(null)}>

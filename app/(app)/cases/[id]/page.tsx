@@ -1,17 +1,17 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useCategories } from "@/hooks/useCategories";
 import { useTimeEntries } from "@/hooks/useTimeEntries";
 import { useBegrunnelser } from "@/hooks/useBegrunnelser";
-import { getCase, deleteTimeEntry, updateCase, deleteBegrunnelse, updateBegrunnelse } from "@/lib/firestore";
+import { getCase, deleteTimeEntry, updateCase, deleteBegrunnelse } from "@/lib/firestore";
 import {
   STATUS_LABELS, STATUS_COLORS,
   BEGRUNNELSE_STATUS_LABELS, BEGRUNNELSE_STATUS_COLORS,
-  type Case, type CaseStatus, type Begrunnelse, type BegrunnelseStatus,
+  type Case, type CaseStatus, type Begrunnelse,
 } from "@/lib/types";
 import { BegrunnelseForm } from "@/components/BegrunnelseForm";
 import { CategoryBadge } from "@/components/CategoryBadge";
@@ -38,7 +38,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Clock, Pencil, Plus, Trash2, CalendarDays, User, Banknote, Mail, Target, FileText, AlertTriangle, ExternalLink } from "lucide-react";
+import { Clock, Pencil, Plus, Trash2, CalendarDays, User, Banknote, Mail, Target, FileText, AlertTriangle, ExternalLink, Copy } from "lucide-react";
 import { CaseDocuments } from "@/components/CaseDocuments";
 import { SignertAvtaleSection } from "@/components/SignertAvtaleSection";
 import { UtbetalingSection } from "@/components/UtbetalingSection";
@@ -48,7 +48,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { format, isPast, isToday, isFuture, differenceInDays } from "date-fns";
+import { format, isPast, isToday, differenceInDays } from "date-fns";
 import { nb } from "date-fns/locale";
 import { toast } from "sonner";
 
@@ -71,9 +71,20 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
   const [newProgress, setNewProgress] = useState("");
   const [showBegrunnelseForm, setShowBegrunnelseForm] = useState(false);
   const [editBegrunnelse, setEditBegrunnelse] = useState<Begrunnelse | null>(null);
+  const [duplicateBegrunnelse, setDuplicateBegrunnelse] = useState<Begrunnelse | null>(null);
   const [deleteBegrunnelseId, setDeleteBegrunnelseId] = useState<string | null>(null);
-  const { begrunnelser } = useBegrunnelser(user?.uid, id);
+  const { begrunnelser, loading: begrunnelserLoading } = useBegrunnelser(user?.uid, id);
   const router = useRouter();
+
+  const sortedBegrunnelser = useMemo(() => {
+    const safeTime = (value: Date | undefined) => {
+      if (!(value instanceof Date)) return 0;
+      const t = value.getTime();
+      return Number.isNaN(t) ? 0 : t;
+    };
+
+    return [...begrunnelser].sort((a, b) => safeTime(b.createdAt) - safeTime(a.createdAt));
+  }, [begrunnelser]);
 
   useEffect(() => {
     if (!user) return;
@@ -547,16 +558,25 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         </CardHeader>
         <CardContent>
-          {begrunnelser.length === 0 ? (
+          {begrunnelserLoading ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Laster begrunnelseskrav…
+            </p>
+          ) : sortedBegrunnelser.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
               Ingen begrunnelseskrav registrert
             </p>
           ) : (
             <div className="divide-y">
-              {begrunnelser.map((b) => {
-                const daysLeft = differenceInDays(b.fristForBegrunnelse, new Date());
-                const overdue = isPast(b.fristForBegrunnelse) && !isToday(b.fristForBegrunnelse) && b.status !== "sendt";
-                const urgent = daysLeft <= 3 && b.status !== "sendt";
+              {sortedBegrunnelser.map((b) => {
+                const hasValidDeadline = b.fristForBegrunnelse instanceof Date && !Number.isNaN(b.fristForBegrunnelse.getTime());
+                const daysLeft = hasValidDeadline ? differenceInDays(b.fristForBegrunnelse, new Date()) : null;
+                const overdue = hasValidDeadline
+                  ? isPast(b.fristForBegrunnelse) && !isToday(b.fristForBegrunnelse) && b.status !== "sendt"
+                  : false;
+                const urgent = hasValidDeadline
+                  ? daysLeft !== null && daysLeft <= 3 && b.status !== "sendt"
+                  : false;
                 return (
                   <div key={b.id} className="py-3">
                     <div className="flex items-start justify-between gap-2">
@@ -581,13 +601,24 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                               overdue ? "text-red-600" : "text-amber-600"
                             )}>
                               <AlertTriangle className="h-3 w-3" />
-                              {overdue ? "Frist utgått" : isToday(b.fristForBegrunnelse) ? "I dag!" : `${daysLeft}d igjen`}
+                              {overdue
+                                ? "Frist utgått"
+                                : hasValidDeadline && isToday(b.fristForBegrunnelse)
+                                ? "I dag!"
+                                : `${daysLeft}d igjen`}
                             </span>
                           )}
                         </div>
                         <div className="flex items-center gap-3 mt-1 text-xs text-slate-400 flex-wrap">
                           <span>{b.epost}</span>
-                          <span>Frist begrunnelse: <span className={cn("font-medium", overdue ? "text-red-600" : "text-slate-600")}>{format(b.fristForBegrunnelse, "d. MMM yyyy", { locale: nb })}</span></span>
+                          <span>
+                            Frist begrunnelse:{" "}
+                            <span className={cn("font-medium", overdue ? "text-red-600" : "text-slate-600")}>
+                              {hasValidDeadline
+                                ? format(b.fristForBegrunnelse, "d. MMM yyyy", { locale: nb })
+                                : "Manglende frist"}
+                            </span>
+                          </span>
                           {b.fristForABeOmBegrunnelse && (
                             <span>Frist krav: <span className="font-medium text-slate-600">{format(b.fristForABeOmBegrunnelse, "d. MMM yyyy", { locale: nb })}</span></span>
                           )}
@@ -605,6 +636,15 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                         </div>
                       </div>
                       <div className="flex gap-1 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="Dupliser og opprett nytt"
+                          onClick={() => setDuplicateBegrunnelse(b)}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -659,6 +699,23 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
               caseId={id}
               existing={editBegrunnelse}
               onDone={() => setEditBegrunnelse(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Begrunnelse – dupliser dialog */}
+      <Dialog open={!!duplicateBegrunnelse} onOpenChange={(o) => !o && setDuplicateBegrunnelse(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Dupliser begrunnelseskrav</DialogTitle>
+          </DialogHeader>
+          {duplicateBegrunnelse && user && (
+            <BegrunnelseForm
+              userId={user.uid}
+              caseId={id}
+              prefillFrom={duplicateBegrunnelse}
+              onDone={() => setDuplicateBegrunnelse(null)}
             />
           )}
         </DialogContent>
