@@ -40,3 +40,12 @@ export function useBegrunnelser(userId: string | undefined, caseId?: string) {
 
   return { begrunnelser, loading };
 }
+
+/** Patch a single item in all cache entries for the given user. */
+export function patchBegrunnelseInCache(userId: string, id: string, updates: Partial<Begrunnelse>) {
+  for (const [key, items] of cache.entries()) {
+    if (key.startsWith(`${userId}:`)) {
+      cache.set(key, items.map((b) => (b.id === id ? { ...b, ...updates } : b)));
+    }
+  }
+}

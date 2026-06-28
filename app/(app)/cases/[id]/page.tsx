@@ -74,6 +74,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
   const [duplicateBegrunnelse, setDuplicateBegrunnelse] = useState<Begrunnelse | null>(null);
   const [deleteBegrunnelseId, setDeleteBegrunnelseId] = useState<string | null>(null);
   const { begrunnelser, loading: begrunnelserLoading } = useBegrunnelser(user?.uid, id);
+  const [begrunnelseOverrides, setBegrunnelseOverrides] = useState<Record<string, Begrunnelse>>({});
   const router = useRouter();
 
   const sortedBegrunnelser = useMemo(() => {
@@ -85,6 +86,27 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
 
     return [...begrunnelser].sort((a, b) => safeTime(b.createdAt) - safeTime(a.createdAt));
   }, [begrunnelser]);
+
+  // Clear overrides once the Firestore snapshot catches up.
+  useEffect(() => {
+    setBegrunnelseOverrides((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const id of Object.keys(next)) {
+        const item = begrunnelser.find((b) => b.id === id);
+        if (item && item.status === next[id].status) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [begrunnelser]);
+
+  const displayedBegrunnelser = useMemo(
+    () => sortedBegrunnelser.map((b) => begrunnelseOverrides[b.id] ?? b),
+    [sortedBegrunnelser, begrunnelseOverrides]
+  );
 
   useEffect(() => {
     if (!user) return;
@@ -562,13 +584,13 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
             <p className="text-sm text-muted-foreground text-center py-4">
               Laster begrunnelseskrav…
             </p>
-          ) : sortedBegrunnelser.length === 0 ? (
+          ) : displayedBegrunnelser.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
               Ingen begrunnelseskrav registrert
             </p>
           ) : (
             <div className="divide-y">
-              {sortedBegrunnelser.map((b) => {
+              {displayedBegrunnelser.map((b) => {
                 const hasValidDeadline = b.fristForBegrunnelse instanceof Date && !Number.isNaN(b.fristForBegrunnelse.getTime());
                 const daysLeft = hasValidDeadline ? differenceInDays(b.fristForBegrunnelse, new Date()) : null;
                 const overdue = hasValidDeadline
@@ -698,7 +720,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
               userId={user.uid}
               caseId={id}
               existing={editBegrunnelse}
-              onDone={() => setEditBegrunnelse(null)}
+              onDone={(updated) => {
+                if (updated) setBegrunnelseOverrides((prev) => ({ ...prev, [updated.id]: updated }));
+                setEditBegrunnelse(null);
+              }}
             />
           )}
         </DialogContent>

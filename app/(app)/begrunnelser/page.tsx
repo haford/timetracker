@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
-import { useBegrunnelser } from "@/hooks/useBegrunnelser";
+import { useBegrunnelser, patchBegrunnelseInCache } from "@/hooks/useBegrunnelser";
 import { useCases } from "@/hooks/useCases";
 import { deleteBegrunnelse, updateBegrunnelse } from "@/lib/firestore";
 import {
@@ -108,6 +108,7 @@ export default function BegrunnelserPage() {
 
     const previousStatus = b.status;
     setOptimisticStatusById((prev) => ({ ...prev, [b.id]: newStatus }));
+    patchBegrunnelseInCache(user.uid, b.id, { status: newStatus });
     setUpdatingStatusById((prev) => ({ ...prev, [b.id]: true }));
 
     try {

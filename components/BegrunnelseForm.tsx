@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { addBegrunnelse, updateBegrunnelse } from "@/lib/firestore";
+import { patchBegrunnelseInCache } from "@/hooks/useBegrunnelser";
 import {
   BEGRUNNELSE_STATUS_LABELS,
   type Begrunnelse,
@@ -25,7 +26,7 @@ interface Props {
   caseId: string;
   existing?: Begrunnelse;
   prefillFrom?: Begrunnelse;
-  onDone: () => void;
+  onDone: (updated?: Begrunnelse) => void;
 }
 
 export function BegrunnelseForm({ userId, caseId, existing, prefillFrom, onDone }: Props) {
@@ -74,12 +75,14 @@ export function BegrunnelseForm({ userId, caseId, existing, prefillFrom, onDone 
       };
       if (isEditing && existing) {
         await updateBegrunnelse(userId, existing.id, payload);
+        patchBegrunnelseInCache(userId, existing.id, payload);
         toast.success("Begrunnelse oppdatert");
+        onDone({ ...existing, ...payload, updatedAt: new Date() });
       } else {
         await addBegrunnelse(userId, payload);
         toast.success(isDuplicateMode ? "Begrunnelse opprettet fra kopi" : "Begrunnelse registrert");
+        onDone();
       }
-      onDone();
     } catch {
       toast.error("Noe gikk galt");
     } finally {
