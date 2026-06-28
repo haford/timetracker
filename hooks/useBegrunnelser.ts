@@ -8,17 +8,25 @@ import type { Begrunnelse } from "@/lib/types";
 const cache = new Map<string, Begrunnelse[]>();
 
 export function useBegrunnelser(userId: string | undefined, caseId?: string) {
-  const cacheKey = `${userId ?? ""}:${caseId ?? ""}`;
-  const cached = userId ? (cache.get(cacheKey) ?? null) : null;
-
-  const [begrunnelser, setBegrunnelser] = useState<Begrunnelse[]>(cached ?? []);
-  const [loading, setLoading] = useState(!cached && Boolean(userId));
+  const [begrunnelser, setBegrunnelser] = useState<Begrunnelse[]>([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!userId) {
       setBegrunnelser([]);
       setLoading(false);
       return;
+    }
+
+    const cacheKey = `${userId}:${caseId ?? ""}`;
+    const cached = cache.get(cacheKey);
+
+    if (cached) {
+      setBegrunnelser(cached);
+      setLoading(false);
+    } else {
+      setBegrunnelser([]);
+      setLoading(true);
     }
 
     const unsub = subscribeBegrunnelser(userId, (items) => {
