@@ -178,7 +178,7 @@ export function BegrunnelseForm({ userId, caseId, existing, prefillFrom, onDone 
         </div>
       </div>
       <div className="flex justify-end gap-2 pt-2">
-        <Button type="button" variant="outline" onClick={onDone}>
+        <Button type="button" variant="outline" onClick={() => onDone()}>
           Avbryt
         </Button>
         <Button type="submit" disabled={saving}>
