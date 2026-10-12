@@ -9,8 +9,8 @@ const geist = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "Timeregistrering — Dommer & Sensor",
-  description: "Privat timeregistrering for dommer og sensor",
+  title: "TimeTracker — Ditt arbeidsrom",
+  description: "Saker, tid, frister og innsikt for dommer- og sensoroppdrag.",
 };
 
 export default function RootLayout({

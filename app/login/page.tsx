@@ -2,77 +2,117 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  CalendarCheck2,
+  ChartNoAxesCombined,
+  Clock3,
+  FolderOpen,
+  LoaderCircle,
+  LockKeyhole,
+} from "lucide-react";
 import { signInWithGoogle } from "@/lib/auth";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Scale } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleLogin = async () => {
+  const [error, setError] = useState("");
+  async function login() {
+    if (loading) return;
     setLoading(true);
-    setError(null);
-    const result = await signInWithGoogle();
-    if (result.success) {
-      router.push("/dashboard");
-    } else {
-      setError(result.error ?? "Innlogging feilet");
+    setError("");
+    try {
+      const result = await signInWithGoogle();
+      if (result.success) router.push("/dashboard");
+      else setError(result.error || "Kunne ikke logge inn. Prøv igjen.");
+    } catch {
+      setError("Innloggingen kunne ikke fullføres. Prøv igjen.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  };
-
+  }
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">
-      <Card className="w-full max-w-md shadow-xl">
-        <CardHeader className="text-center pb-2">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-900">
-            <Scale className="h-8 w-8 text-white" />
+    <main className="login-page">
+      <section className="login-story">
+        <div className="workspace-brand">
+          <span className="brand-symbol">
+            <Clock3 size={25} />
+          </span>
+          <span>
+            TimeTracker<small>DOMMER & SENSOR</small>
+          </span>
+        </div>
+        <div className="login-story-content">
+          <p>Rom for det viktige</p>
+          <h1>
+            En roligere
+            <br />
+            arbeidsdag.
+            <br />
+            En bedre oversikt.
+          </h1>
+          <span>
+            Samle oppdrag, tid og frister i ett arbeidsrom. Ha oversikten, og
+            bruk tiden på arbeidet som betyr noe.
+          </span>
+          <div className="login-features">
+            <div>
+              <FolderOpen size={18} />
+              Alle oppdragene på ett sted
+            </div>
+            <div>
+              <CalendarCheck2 size={18} />
+              Fristene du trenger å huske
+            </div>
+            <div>
+              <ChartNoAxesCombined size={18} />
+              Innsikt i hvor tiden går
+            </div>
           </div>
-          <CardTitle className="text-2xl font-bold">Timeregistrering</CardTitle>
-          <CardDescription className="text-base">
-            Dommer &amp; Sensor — privat timelogg
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pt-4">
+        </div>
+        <p className="login-story-footer">
+          Ditt personlige arbeidsrom for dommer- og sensoroppdrag.
+        </p>
+      </section>
+      <section className="login-content">
+        <div className="login-card">
+          <div className="eyebrow">Ditt arbeidsrom venter</div>
+          <h2>Velkommen tilbake.</h2>
+          <p>
+            Logg inn for å fortsette med sakene dine og få oversikt over
+            arbeidsdagen.
+          </p>
           {error && (
-            <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+            <div
+              role="alert"
+              className="mb-5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            >
               {error}
             </div>
           )}
-          <Button
-            onClick={handleLogin}
-            disabled={loading}
-            className="w-full h-11 gap-2 text-base"
-            variant="default"
-          >
+          <button className="primary-button" onClick={login} disabled={loading}>
             {loading ? (
-              <span className="flex items-center gap-2">
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                </svg>
-                Logger inn...
-              </span>
+              <LoaderCircle size={18} className="animate-spin" />
             ) : (
-              <>
-                <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
-                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
-                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                </svg>
-                Logg inn med Google
-              </>
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  fill="currentColor"
+                  d="M21.6 12.23c0-.71-.06-1.39-.18-2.04H12v3.87h5.38a4.6 4.6 0 0 1-2 3.01v2.5h3.24c1.9-1.75 2.98-4.32 2.98-7.34ZM12 22c2.7 0 4.96-.9 6.62-2.43l-3.24-2.5c-.9.6-2.04.96-3.38.96-2.6 0-4.8-1.76-5.59-4.12H3.06v2.6A10 10 0 0 0 12 22ZM6.41 13.91A6 6 0 0 1 6.1 12c0-.66.11-1.31.31-1.91V7.5H3.06A10 10 0 0 0 2 12c0 1.61.38 3.14 1.06 4.5l3.35-2.6ZM12 5.97c1.47 0 2.8.51 3.83 1.52l2.88-2.88A9.6 9.6 0 0 0 12 2a10 10 0 0 0-8.94 5.5l3.35 2.6C7.2 7.73 9.4 5.97 12 5.97Z"
+                />
+              </svg>
             )}
-          </Button>
-          <p className="mt-4 text-center text-xs text-muted-foreground">
-            Kun autorisert konto har tilgang
-          </p>
-        </CardContent>
-      </Card>
-    </div>
+            {loading ? "Logger inn…" : "Fortsett med Google"}
+          </button>
+          <div className="login-privacy">
+            <LockKeyhole size={12} />
+            Kun din autoriserte konto har tilgang
+          </div>
+        </div>
+      </section>
+    </main>
   );
 }

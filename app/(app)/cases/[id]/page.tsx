@@ -6,12 +6,24 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useCategories } from "@/hooks/useCategories";
 import { useTimeEntries } from "@/hooks/useTimeEntries";
-import { useBegrunnelser } from "@/hooks/useBegrunnelser";
-import { getCase, deleteTimeEntry, updateCase, deleteBegrunnelse } from "@/lib/firestore";
 import {
-  STATUS_LABELS, STATUS_COLORS,
-  BEGRUNNELSE_STATUS_LABELS, BEGRUNNELSE_STATUS_COLORS,
-  type Case, type CaseStatus, type Begrunnelse,
+  useBegrunnelser,
+  patchBegrunnelseInCache,
+} from "@/hooks/useBegrunnelser";
+import {
+  getCase,
+  deleteTimeEntry,
+  updateCase,
+  deleteBegrunnelse,
+} from "@/lib/firestore";
+import {
+  STATUS_LABELS,
+  STATUS_COLORS,
+  BEGRUNNELSE_STATUS_LABELS,
+  BEGRUNNELSE_STATUS_COLORS,
+  type Case,
+  type CaseStatus,
+  type Begrunnelse,
 } from "@/lib/types";
 import { BegrunnelseForm } from "@/components/BegrunnelseForm";
 import { CategoryBadge } from "@/components/CategoryBadge";
@@ -38,7 +50,21 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Clock, Pencil, Plus, Trash2, CalendarDays, User, Banknote, Mail, Target, FileText, AlertTriangle, ExternalLink, Copy } from "lucide-react";
+import {
+  Clock,
+  Pencil,
+  Plus,
+  Trash2,
+  CalendarDays,
+  User,
+  Banknote,
+  Mail,
+  Target,
+  FileText,
+  AlertTriangle,
+  ExternalLink,
+  Copy,
+} from "lucide-react";
 import { CaseDocuments } from "@/components/CaseDocuments";
 import { SignertAvtaleSection } from "@/components/SignertAvtaleSection";
 import { UtbetalingSection } from "@/components/UtbetalingSection";
@@ -60,7 +86,11 @@ function minutesToHours(min: number): string {
   return `${h}t ${m}m`;
 }
 
-export default function CaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function CaseDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = use(params);
   const { user } = useAuth();
   const { categories } = useCategories(user?.uid);
@@ -70,11 +100,18 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
   const [newProgress, setNewProgress] = useState("");
   const [showBegrunnelseForm, setShowBegrunnelseForm] = useState(false);
-  const [editBegrunnelse, setEditBegrunnelse] = useState<Begrunnelse | null>(null);
-  const [duplicateBegrunnelse, setDuplicateBegrunnelse] = useState<Begrunnelse | null>(null);
-  const [deleteBegrunnelseId, setDeleteBegrunnelseId] = useState<string | null>(null);
-  const { begrunnelser, loading: begrunnelserLoading } = useBegrunnelser(user?.uid, id);
-  const [begrunnelseOverrides, setBegrunnelseOverrides] = useState<Record<string, Begrunnelse>>({});
+  const [editBegrunnelse, setEditBegrunnelse] = useState<Begrunnelse | null>(
+    null,
+  );
+  const [duplicateBegrunnelse, setDuplicateBegrunnelse] =
+    useState<Begrunnelse | null>(null);
+  const [deleteBegrunnelseId, setDeleteBegrunnelseId] = useState<string | null>(
+    null,
+  );
+  const { begrunnelser, loading: begrunnelserLoading } = useBegrunnelser(
+    user?.uid,
+    id,
+  );
   const router = useRouter();
 
   const sortedBegrunnelser = useMemo(() => {
@@ -84,29 +121,12 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
       return Number.isNaN(t) ? 0 : t;
     };
 
-    return [...begrunnelser].sort((a, b) => safeTime(b.createdAt) - safeTime(a.createdAt));
+    return [...begrunnelser].sort(
+      (a, b) => safeTime(b.createdAt) - safeTime(a.createdAt),
+    );
   }, [begrunnelser]);
 
-  // Clear overrides once the Firestore snapshot catches up.
-  useEffect(() => {
-    setBegrunnelseOverrides((prev) => {
-      const next = { ...prev };
-      let changed = false;
-      for (const id of Object.keys(next)) {
-        const item = begrunnelser.find((b) => b.id === id);
-        if (item && item.status === next[id].status) {
-          delete next[id];
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [begrunnelser]);
-
-  const displayedBegrunnelser = useMemo(
-    () => sortedBegrunnelser.map((b) => begrunnelseOverrides[b.id] ?? b),
-    [sortedBegrunnelser, begrunnelseOverrides]
-  );
+  const displayedBegrunnelser = sortedBegrunnelser;
 
   useEffect(() => {
     if (!user) return;
@@ -119,7 +139,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
   const handleStatusChange = async (newStatus: CaseStatus) => {
     if (!user || !caseData) return;
     await updateCase(user.uid, id, { status: newStatus });
-    setCaseData((prev) => prev ? { ...prev, status: newStatus } : prev);
+    setCaseData((prev) => (prev ? { ...prev, status: newStatus } : prev));
     toast.success("Status oppdatert");
   };
 
@@ -134,10 +154,15 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
   useEffect(() => {
     if (!user || !caseData) return;
     if (begrunnelser.length > 0 && caseData.status === "avsluttet") {
-      updateCase(user.uid, id, { status: "begrunnelser" });
-      setCaseData((prev) => prev ? { ...prev, status: "begrunnelser" } : prev);
+      updateCase(user.uid, id, { status: "begrunnelser" })
+        .then(() => {
+          setCaseData((prev) =>
+            prev ? { ...prev, status: "begrunnelser" } : prev,
+          );
+        })
+        .catch(() => toast.error("Saksstatusen kunne ikke oppdateres."));
     }
-  }, [begrunnelser, caseData?.status]);
+  }, [begrunnelser, caseData, id, user]);
 
   const handleDeleteBegrunnelse = async () => {
     if (!deleteBegrunnelseId || !user) return;
@@ -153,9 +178,12 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
       toast.error("Vennligst angi et gyldig tall");
       return;
     }
-    const updated = [...(caseData.gradeProgress ?? []), { antallRettet: antall, loggedAt: new Date() }];
+    const updated = [
+      ...(caseData.gradeProgress ?? []),
+      { antallRettet: antall, loggedAt: new Date() },
+    ];
     await updateCase(user.uid, id, { gradeProgress: updated });
-    setCaseData((prev) => prev ? { ...prev, gradeProgress: updated } : prev);
+    setCaseData((prev) => (prev ? { ...prev, gradeProgress: updated } : prev));
     setNewProgress("");
     toast.success("Progresjon logget");
   };
@@ -175,39 +203,61 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
   if (!caseData) return <div className="p-6">Sak ikke funnet</div>;
 
   const category = categories.find((c) => c.id === caseData.categoryId);
-  const pace = caseData.status !== "avsluttet"
-    ? calcPace(caseData.honorarAntallBesvarelser, caseData.deadline, caseData.gradeProgress)
-    : null;
+  const pace =
+    caseData.status !== "avsluttet"
+      ? calcPace(
+          caseData.honorarAntallBesvarelser,
+          caseData.deadline,
+          caseData.gradeProgress,
+        )
+      : null;
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      <div className="mb-6 flex items-start justify-between gap-4">
+      <Link href="/cases" className="text-link mb-4">
+        ← Tilbake til saker
+      </Link>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-bold text-slate-900">{caseData.title}</h1>
+            <h1 className="text-2xl font-bold text-slate-900">
+              {caseData.title}
+            </h1>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <CategoryBadge category={category} small />
-            {caseData.deadline && (() => {
-              const held = isPast(caseData.deadline) && !isToday(caseData.deadline)
-                && caseData.status === "karakter_satt";
-              return (
-                <span className={cn("flex items-center gap-1", held && "text-emerald-600 font-medium")}>
-                  <CalendarDays className="h-3.5 w-3.5" />
-                  {held
-                    ? `Frist holdt: ${format(caseData.deadline, "d. MMMM yyyy", { locale: nb })}`
-                    : `Frist: ${format(caseData.deadline, "d. MMMM yyyy", { locale: nb })}`
-                  }
-                </span>
-              );
-            })()}
+            {caseData.deadline &&
+              (() => {
+                const held =
+                  isPast(caseData.deadline) &&
+                  !isToday(caseData.deadline) &&
+                  caseData.status === "karakter_satt";
+                return (
+                  <span
+                    className={cn(
+                      "flex items-center gap-1",
+                      held && "text-emerald-600 font-medium",
+                    )}
+                  >
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    {held
+                      ? `Frist holdt: ${format(caseData.deadline, "d. MMMM yyyy", { locale: nb })}`
+                      : `Frist: ${format(caseData.deadline, "d. MMMM yyyy", { locale: nb })}`}
+                  </span>
+                );
+              })()}
           </div>
           {caseData.description && (
-            <p className="mt-2 text-sm text-slate-600">{caseData.description}</p>
+            <p className="mt-2 text-sm text-slate-600">
+              {caseData.description}
+            </p>
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Select value={caseData.status} onValueChange={(v) => v && handleStatusChange(v as CaseStatus)}>
+          <Select
+            value={caseData.status}
+            onValueChange={(v) => v && handleStatusChange(v as CaseStatus)}
+          >
             <SelectTrigger className="w-36">
               <SelectValue />
             </SelectTrigger>
@@ -219,7 +269,11 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
               ))}
             </SelectContent>
           </Select>
-          <Link href={`/cases/${id}/edit`} className={cn(buttonVariants({ variant: "outline", size: "icon" }))}>
+          <Link
+            href={`/cases/${id}/edit`}
+            aria-label="Rediger sak"
+            className={cn(buttonVariants({ variant: "outline", size: "icon" }))}
+          >
             <Pencil className="h-4 w-4" />
           </Link>
         </div>
@@ -248,8 +302,12 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
             <User className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
             <div>
               <p className="text-xs text-slate-400 mb-0.5">Kontaktperson</p>
-              <p className="text-sm font-medium text-slate-800">{caseData.contactName}</p>
-              {caseData.contactInfo && <p className="text-xs text-slate-500">{caseData.contactInfo}</p>}
+              <p className="text-sm font-medium text-slate-800">
+                {caseData.contactName}
+              </p>
+              {caseData.contactInfo && (
+                <p className="text-xs text-slate-500">{caseData.contactInfo}</p>
+              )}
             </div>
           </div>
         )}
@@ -266,27 +324,37 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                     const today = isToday(m.dato);
                     return (
                       <div key={i} className="flex items-center gap-2">
-                        <span className={cn(
-                          "text-sm font-medium",
-                          past ? "text-slate-400 line-through" : today ? "text-indigo-700" : "text-slate-800"
-                        )}>
+                        <span
+                          className={cn(
+                            "text-sm font-medium",
+                            past
+                              ? "text-slate-400 line-through"
+                              : today
+                                ? "text-indigo-700"
+                                : "text-slate-800",
+                          )}
+                        >
                           {format(m.dato, "d. MMMM yyyy", { locale: nb })}
                           {m.tid && ` kl. ${m.tid}`}
                         </span>
                         {m.tittel && (
-                          <span className={cn(
-                            "text-xs px-1.5 py-0.5 rounded border",
-                            past
-                              ? "text-slate-400 bg-slate-50 border-slate-100"
-                              : today
-                              ? "text-indigo-700 bg-indigo-50 border-indigo-200"
-                              : "text-slate-500 bg-slate-50 border-slate-200"
-                          )}>
+                          <span
+                            className={cn(
+                              "text-xs px-1.5 py-0.5 rounded border",
+                              past
+                                ? "text-slate-400 bg-slate-50 border-slate-100"
+                                : today
+                                  ? "text-indigo-700 bg-indigo-50 border-indigo-200"
+                                  : "text-slate-500 bg-slate-50 border-slate-200",
+                            )}
+                          >
                             {m.tittel}
                           </span>
                         )}
                         {today && (
-                          <span className="text-xs text-indigo-600 font-medium">i dag</span>
+                          <span className="text-xs text-indigo-600 font-medium">
+                            i dag
+                          </span>
                         )}
                       </div>
                     );
@@ -304,27 +372,36 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                 {[...caseData.delfrister]
                   .sort((a, b) => a.date.getTime() - b.date.getTime())
                   .map((d, i) => {
-                    const overdue = isPast(d.date) && !isToday(d.date) && caseData.status !== "avsluttet";
+                    const overdue =
+                      isPast(d.date) &&
+                      !isToday(d.date) &&
+                      caseData.status !== "avsluttet";
                     return (
                       <div key={i} className="flex items-center gap-2">
-                        <span className={cn(
-                          "text-sm font-medium",
-                          overdue ? "text-red-600" : "text-slate-800"
-                        )}>
+                        <span
+                          className={cn(
+                            "text-sm font-medium",
+                            overdue ? "text-red-600" : "text-slate-800",
+                          )}
+                        >
                           {format(d.date, "d. MMMM yyyy", { locale: nb })}
                         </span>
                         {d.label && (
-                          <span className={cn(
-                            "text-xs px-1.5 py-0.5 rounded border",
-                            overdue
-                              ? "text-red-600 bg-red-50 border-red-200"
-                              : "text-slate-500 bg-slate-50 border-slate-200"
-                          )}>
+                          <span
+                            className={cn(
+                              "text-xs px-1.5 py-0.5 rounded border",
+                              overdue
+                                ? "text-red-600 bg-red-50 border-red-200"
+                                : "text-slate-500 bg-slate-50 border-slate-200",
+                            )}
+                          >
                             {d.label}
                           </span>
                         )}
                         {overdue && (
-                          <span className="text-xs text-red-500 font-medium">utgått</span>
+                          <span className="text-xs text-red-500 font-medium">
+                            utgått
+                          </span>
                         )}
                       </div>
                     );
@@ -335,13 +412,20 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         )}
         {pace && (
           <div className="flex items-start gap-3 px-4 py-3">
-            <Target className={cn("h-4 w-4 mt-0.5 shrink-0",
-              pace.kind === "overdue" ? "text-red-500"
-                : pace.kind === "today" ? "text-amber-500"
-                : "text-indigo-500"
-            )} />
+            <Target
+              className={cn(
+                "h-4 w-4 mt-0.5 shrink-0",
+                pace.kind === "overdue"
+                  ? "text-red-500"
+                  : pace.kind === "today"
+                    ? "text-amber-500"
+                    : "text-indigo-500",
+              )}
+            />
             <div>
-              <p className="text-xs text-slate-400 mb-0.5">Tempo for å rekke fristen</p>
+              <p className="text-xs text-slate-400 mb-0.5">
+                Tempo for å rekke fristen
+              </p>
               {pace.kind === "overdue" ? (
                 <p className="text-sm font-medium text-red-600">Frist utgått</p>
               ) : pace.kind === "today" ? (
@@ -352,7 +436,8 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                 <p className="text-sm font-medium text-slate-800">
                   {pace.perDay} besvarelser/dag
                   <span className="text-xs text-slate-400 font-normal ml-1.5">
-                    ({pace.daysLeft} dag{pace.daysLeft !== 1 ? "er" : ""} igjen, 1 dags margin)
+                    ({pace.daysLeft} dag{pace.daysLeft !== 1 ? "er" : ""} igjen,
+                    1 dags margin)
                   </span>
                 </p>
               )}
@@ -365,29 +450,44 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
             <div className="flex-1 min-w-0">
               <p className="text-xs text-slate-400 mb-1">Honorar</p>
               {/* Matrise */}
-              {(caseData.honorarTimesats != null || caseData.honorarTimefaktor != null) && (
+              {(caseData.honorarTimesats != null ||
+                caseData.honorarTimefaktor != null) && (
                 <div className="mb-2 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 text-xs space-y-1">
-                  {caseData.honorarTimesats != null && caseData.honorarTimefaktor != null && caseData.honorarAntallBesvarelser != null && (
-                    <p className="text-slate-500">
-                      {caseData.honorarTimesats.toLocaleString("nb-NO")} kr/t
-                      {" × "}{caseData.honorarTimefaktor} t
-                      {" × "}{caseData.honorarAntallBesvarelser} besv.
-                      {" = "}
-                      <span className="font-semibold text-slate-700">
-                        {Math.round(caseData.honorarTimesats * caseData.honorarTimefaktor * caseData.honorarAntallBesvarelser).toLocaleString("nb-NO")} kr
-                      </span>
-                    </p>
-                  )}
-                  {caseData.honorarTillegg && caseData.honorarTillegg.length > 0 && (
-                    <div className="space-y-0.5 pt-1 border-t border-slate-100">
-                      {caseData.honorarTillegg.map((t, i) => (
-                        <div key={i} className="flex justify-between text-slate-500">
-                          <span>{t.beskrivelse}</span>
-                          <span className="font-medium">+ {t.belop.toLocaleString("nb-NO")} kr</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {caseData.honorarTimesats != null &&
+                    caseData.honorarTimefaktor != null &&
+                    caseData.honorarAntallBesvarelser != null && (
+                      <p className="text-slate-500">
+                        {caseData.honorarTimesats.toLocaleString("nb-NO")} kr/t
+                        {" × "}
+                        {caseData.honorarTimefaktor} t{" × "}
+                        {caseData.honorarAntallBesvarelser} besv.
+                        {" = "}
+                        <span className="font-semibold text-slate-700">
+                          {Math.round(
+                            caseData.honorarTimesats *
+                              caseData.honorarTimefaktor *
+                              caseData.honorarAntallBesvarelser,
+                          ).toLocaleString("nb-NO")}{" "}
+                          kr
+                        </span>
+                      </p>
+                    )}
+                  {caseData.honorarTillegg &&
+                    caseData.honorarTillegg.length > 0 && (
+                      <div className="space-y-0.5 pt-1 border-t border-slate-100">
+                        {caseData.honorarTillegg.map((t, i) => (
+                          <div
+                            key={i}
+                            className="flex justify-between text-slate-500"
+                          >
+                            <span>{t.beskrivelse}</span>
+                            <span className="font-medium">
+                              + {t.belop.toLocaleString("nb-NO")} kr
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                 </div>
               )}
               <div className="flex items-center gap-2 flex-wrap">
@@ -398,12 +498,14 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                 ) : (
                   <p className="text-sm text-slate-500">Ikke angitt</p>
                 )}
-                <span className={cn(
-                  "text-xs font-medium px-2 py-0.5 rounded-full",
-                  caseData.honorarPaid
-                    ? "bg-emerald-100 text-emerald-700"
-                    : "bg-amber-100 text-amber-700"
-                )}>
+                <span
+                  className={cn(
+                    "text-xs font-medium px-2 py-0.5 rounded-full",
+                    caseData.honorarPaid
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-amber-100 text-amber-700",
+                  )}
+                >
                   {caseData.honorarPaid ? "Utbetalt" : "Ikke utbetalt"}
                 </span>
               </div>
@@ -413,19 +515,25 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         <SignertAvtaleSection
           userId={user!.uid}
           caseData={caseData}
-          onUpdate={(updated) => setCaseData((prev) => prev ? { ...prev, ...updated } : prev)}
+          onUpdate={(updated) =>
+            setCaseData((prev) => (prev ? { ...prev, ...updated } : prev))
+          }
         />
         {caseData.isPaid && (
           <UtbetalingSection
             userId={user!.uid}
             caseData={caseData}
-            onUpdate={(updated) => setCaseData((prev) => prev ? { ...prev, ...updated } : prev)}
+            onUpdate={(updated) =>
+              setCaseData((prev) => (prev ? { ...prev, ...updated } : prev))
+            }
           />
         )}
         {caseData.notes && (
           <div className="px-4 py-3">
             <p className="text-xs text-slate-400 mb-1">Merknader</p>
-            <p className="text-sm text-slate-700 whitespace-pre-wrap">{caseData.notes}</p>
+            <p className="text-sm text-slate-700 whitespace-pre-wrap">
+              {caseData.notes}
+            </p>
           </div>
         )}
       </div>
@@ -447,7 +555,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         <Card>
           <CardContent className="pt-4 pb-4">
             <p className="text-xs text-muted-foreground">Status</p>
-            <Badge className={`mt-1 ${STATUS_COLORS[caseData.status]}`} variant="outline">
+            <Badge
+              className={`mt-1 ${STATUS_COLORS[caseData.status]}`}
+              variant="outline"
+            >
               {STATUS_LABELS[caseData.status]}
             </Badge>
           </CardContent>
@@ -462,7 +573,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
               <Clock className="h-4 w-4" />
               Timelogg
             </CardTitle>
-            <Link href={`/timer/new?caseId=${id}`} className={cn(buttonVariants({ size: "sm" }))}>
+            <Link
+              href={`/timer/new?caseId=${id}`}
+              className={cn(buttonVariants({ size: "sm" }))}
+            >
               <Plus className="h-4 w-4 mr-1" />
               Legg til
             </Link>
@@ -476,7 +590,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
           ) : (
             <div className="divide-y">
               {entries.map((e) => (
-                <div key={e.id} className="flex items-center justify-between py-3">
+                <div
+                  key={e.id}
+                  className="flex items-center justify-between py-3"
+                >
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium">
@@ -492,7 +609,9 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                       </span>
                     </div>
                     {e.description && (
-                      <p className="text-xs text-muted-foreground mt-0.5">{e.description}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {e.description}
+                      </p>
                     )}
                   </div>
                   <div className="flex gap-1">
@@ -521,44 +640,60 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
       </Card>
 
       {/* Retteprogress */}
-      {caseData.isPaid && caseData.honorarAntallBesvarelser && caseData.honorarAntallBesvarelser > 1 && (
-        <Card className="mt-6">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Retteprogress</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {caseData.gradeProgress && caseData.gradeProgress.length > 0 && (
-              <div>
-                <p className="text-xs text-muted-foreground mb-2">
-                  Totalt rettet: <span className="font-semibold text-slate-700">{caseData.gradeProgress.reduce((sum, p) => sum + p.antallRettet, 0)} / {caseData.honorarAntallBesvarelser} besvarelser</span>
-                </p>
-                <div className="rounded-lg bg-slate-50 p-3 space-y-2">
-                  {[...caseData.gradeProgress].reverse().map((p, i) => (
-                    <div key={i} className="flex items-center justify-between text-xs">
-                      <span className="text-slate-500">{format(p.loggedAt, "d. MMM HH:mm", { locale: nb })}</span>
-                      <span className="font-medium text-slate-700">{p.antallRettet} stk</span>
-                    </div>
-                  ))}
+      {caseData.isPaid &&
+        caseData.honorarAntallBesvarelser &&
+        caseData.honorarAntallBesvarelser > 1 && (
+          <Card className="mt-6">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Retteprogress</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {caseData.gradeProgress && caseData.gradeProgress.length > 0 && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Totalt rettet:{" "}
+                    <span className="font-semibold text-slate-700">
+                      {caseData.gradeProgress.reduce(
+                        (sum, p) => sum + p.antallRettet,
+                        0,
+                      )}{" "}
+                      / {caseData.honorarAntallBesvarelser} besvarelser
+                    </span>
+                  </p>
+                  <div className="rounded-lg bg-slate-50 p-3 space-y-2">
+                    {[...caseData.gradeProgress].reverse().map((p, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between text-xs"
+                      >
+                        <span className="text-slate-500">
+                          {format(p.loggedAt, "d. MMM HH:mm", { locale: nb })}
+                        </span>
+                        <span className="font-medium text-slate-700">
+                          {p.antallRettet} stk
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
+              )}
+              <div className="flex gap-2 pt-2">
+                <Input
+                  type="number"
+                  min="1"
+                  placeholder="Antall rettet i dag"
+                  value={newProgress}
+                  onChange={(e) => setNewProgress(e.target.value)}
+                  onKeyPress={(e) => e.key === "Enter" && handleAddProgress()}
+                  className="flex-1"
+                />
+                <Button onClick={handleAddProgress} size="sm">
+                  Legg inn
+                </Button>
               </div>
-            )}
-            <div className="flex gap-2 pt-2">
-              <Input
-                type="number"
-                min="1"
-                placeholder="Antall rettet i dag"
-                value={newProgress}
-                onChange={(e) => setNewProgress(e.target.value)}
-                onKeyPress={(e) => e.key === "Enter" && handleAddProgress()}
-                className="flex-1"
-              />
-              <Button onClick={handleAddProgress} size="sm">
-                Legg inn
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
+        )}
 
       {/* Begrunnelser */}
       <Card className="mt-6">
@@ -591,10 +726,16 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
           ) : (
             <div className="divide-y">
               {displayedBegrunnelser.map((b) => {
-                const hasValidDeadline = b.fristForBegrunnelse instanceof Date && !Number.isNaN(b.fristForBegrunnelse.getTime());
-                const daysLeft = hasValidDeadline ? differenceInDays(b.fristForBegrunnelse, new Date()) : null;
+                const hasValidDeadline =
+                  b.fristForBegrunnelse instanceof Date &&
+                  !Number.isNaN(b.fristForBegrunnelse.getTime());
+                const daysLeft = hasValidDeadline
+                  ? differenceInDays(b.fristForBegrunnelse, new Date())
+                  : null;
                 const overdue = hasValidDeadline
-                  ? isPast(b.fristForBegrunnelse) && !isToday(b.fristForBegrunnelse) && b.status !== "sendt"
+                  ? isPast(b.fristForBegrunnelse) &&
+                    !isToday(b.fristForBegrunnelse) &&
+                    b.status !== "sendt"
                   : false;
                 const urgent = hasValidDeadline
                   ? daysLeft !== null && daysLeft <= 3 && b.status !== "sendt"
@@ -604,30 +745,39 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium text-slate-800">{b.navn}</span>
-                          <span className="text-xs text-slate-400">#{b.kandidatnummer}</span>
+                          <span className="text-sm font-medium text-slate-800">
+                            {b.navn}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            #{b.kandidatnummer}
+                          </span>
                           {b.karakter && (
                             <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold">
                               {b.karakter}
                             </span>
                           )}
-                          <span className={cn(
-                            "text-xs px-2 py-0.5 rounded-full font-medium",
-                            BEGRUNNELSE_STATUS_COLORS[b.status]
-                          )}>
+                          <span
+                            className={cn(
+                              "text-xs px-2 py-0.5 rounded-full font-medium",
+                              BEGRUNNELSE_STATUS_COLORS[b.status],
+                            )}
+                          >
                             {BEGRUNNELSE_STATUS_LABELS[b.status]}
                           </span>
                           {(overdue || urgent) && (
-                            <span className={cn(
-                              "text-xs font-semibold flex items-center gap-1",
-                              overdue ? "text-red-600" : "text-amber-600"
-                            )}>
+                            <span
+                              className={cn(
+                                "text-xs font-semibold flex items-center gap-1",
+                                overdue ? "text-red-600" : "text-amber-600",
+                              )}
+                            >
                               <AlertTriangle className="h-3 w-3" />
                               {overdue
                                 ? "Frist utgått"
-                                : hasValidDeadline && isToday(b.fristForBegrunnelse)
-                                ? "I dag!"
-                                : `${daysLeft}d igjen`}
+                                : hasValidDeadline &&
+                                    isToday(b.fristForBegrunnelse)
+                                  ? "I dag!"
+                                  : `${daysLeft}d igjen`}
                             </span>
                           )}
                         </div>
@@ -635,14 +785,30 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                           <span>{b.epost}</span>
                           <span>
                             Frist begrunnelse:{" "}
-                            <span className={cn("font-medium", overdue ? "text-red-600" : "text-slate-600")}>
+                            <span
+                              className={cn(
+                                "font-medium",
+                                overdue ? "text-red-600" : "text-slate-600",
+                              )}
+                            >
                               {hasValidDeadline
-                                ? format(b.fristForBegrunnelse, "d. MMM yyyy", { locale: nb })
+                                ? format(b.fristForBegrunnelse, "d. MMM yyyy", {
+                                    locale: nb,
+                                  })
                                 : "Manglende frist"}
                             </span>
                           </span>
                           {b.fristForABeOmBegrunnelse && (
-                            <span>Frist krav: <span className="font-medium text-slate-600">{format(b.fristForABeOmBegrunnelse, "d. MMM yyyy", { locale: nb })}</span></span>
+                            <span>
+                              Frist krav:{" "}
+                              <span className="font-medium text-slate-600">
+                                {format(
+                                  b.fristForABeOmBegrunnelse,
+                                  "d. MMM yyyy",
+                                  { locale: nb },
+                                )}
+                              </span>
+                            </span>
                           )}
                           {b.begrunnelseskravLenke && (
                             <a
@@ -694,7 +860,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
       </Card>
 
       {/* Begrunnelse – legg til dialog */}
-      <Dialog open={showBegrunnelseForm} onOpenChange={(o) => !o && setShowBegrunnelseForm(false)}>
+      <Dialog
+        open={showBegrunnelseForm}
+        onOpenChange={(o) => !o && setShowBegrunnelseForm(false)}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Registrer begrunnelseskrav</DialogTitle>
@@ -710,7 +879,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
       </Dialog>
 
       {/* Begrunnelse – rediger dialog */}
-      <Dialog open={!!editBegrunnelse} onOpenChange={(o) => !o && setEditBegrunnelse(null)}>
+      <Dialog
+        open={!!editBegrunnelse}
+        onOpenChange={(o) => !o && setEditBegrunnelse(null)}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Rediger begrunnelseskrav</DialogTitle>
@@ -721,7 +893,8 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
               caseId={id}
               existing={editBegrunnelse}
               onDone={(updated) => {
-                if (updated) setBegrunnelseOverrides((prev) => ({ ...prev, [updated.id]: updated }));
+                if (updated && user)
+                  patchBegrunnelseInCache(user.uid, updated.id, updated);
                 setEditBegrunnelse(null);
               }}
             />
@@ -730,7 +903,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
       </Dialog>
 
       {/* Begrunnelse – dupliser dialog */}
-      <Dialog open={!!duplicateBegrunnelse} onOpenChange={(o) => !o && setDuplicateBegrunnelse(null)}>
+      <Dialog
+        open={!!duplicateBegrunnelse}
+        onOpenChange={(o) => !o && setDuplicateBegrunnelse(null)}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Dupliser begrunnelseskrav</DialogTitle>
@@ -747,7 +923,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
       </Dialog>
 
       {/* Begrunnelse – slett dialog */}
-      <AlertDialog open={!!deleteBegrunnelseId} onOpenChange={(o) => !o && setDeleteBegrunnelseId(null)}>
+      <AlertDialog
+        open={!!deleteBegrunnelseId}
+        onOpenChange={(o) => !o && setDeleteBegrunnelseId(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Slett begrunnelseskrav?</AlertDialogTitle>
@@ -757,7 +936,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Avbryt</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteBegrunnelse} className="bg-red-600 hover:bg-red-700">
+            <AlertDialogAction
+              onClick={handleDeleteBegrunnelse}
+              className="bg-red-600 hover:bg-red-700"
+            >
               Slett
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -771,7 +953,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      <AlertDialog open={!!deleteEntryId} onOpenChange={(open) => !open && setDeleteEntryId(null)}>
+      <AlertDialog
+        open={!!deleteEntryId}
+        onOpenChange={(open) => !open && setDeleteEntryId(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Slett timeentry?</AlertDialogTitle>
@@ -781,7 +966,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Avbryt</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteEntry} className="bg-red-600 hover:bg-red-700">
+            <AlertDialogAction
+              onClick={handleDeleteEntry}
+              className="bg-red-600 hover:bg-red-700"
+            >
               Slett
             </AlertDialogAction>
           </AlertDialogFooter>

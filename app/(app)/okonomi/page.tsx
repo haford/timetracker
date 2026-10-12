@@ -7,18 +7,33 @@ import { useCases } from "@/hooks/useCases";
 import { useTimeEntries } from "@/hooks/useTimeEntries";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { updateCase, updateUserSettings } from "@/lib/firestore";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { SignertAvtaleSection } from "@/components/SignertAvtaleSection";
 import { UtbetalingSection } from "@/components/UtbetalingSection";
 import {
-  Clock, Pencil, Check, X, Circle, CheckCircle2, Send, AlertCircle, AlertTriangle,
+  Clock,
+  Pencil,
+  Check,
+  X,
+  Circle,
+  CheckCircle2,
+  AlertCircle,
+  AlertTriangle,
+  Search,
+  Download,
 } from "lucide-react";
 import { format } from "date-fns";
 import { nb } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { Case } from "@/lib/types";
+import { PageHeading, ErrorState } from "@/components/workspace-ui";
+import { matchesSearch, exportCsv } from "@/lib/insights";
 
 type Filter = "alle" | "gjenstår" | "venter_betaling" | "avvik";
 
@@ -31,7 +46,11 @@ function minutesToHours(min: number): string {
 }
 
 function formatNok(n: number): string {
-  return new Intl.NumberFormat("nb-NO", { style: "currency", currency: "NOK", maximumFractionDigits: 0 }).format(n);
+  return new Intl.NumberFormat("nb-NO", {
+    style: "currency",
+    currency: "NOK",
+    maximumFractionDigits: 0,
+  }).format(n);
 }
 
 function nettoCalc(brutto: number, rate: number): number {
@@ -39,13 +58,22 @@ function nettoCalc(brutto: number, rate: number): number {
 }
 
 function hasAvvik(c: Case): boolean {
-  return !!(c.honorarPaid && c.honorarUtbetaltBelop != null && c.honorar != null &&
-    Math.abs(c.honorarUtbetaltBelop - c.honorar) / c.honorar > 0.01);
+  return !!(
+    c.honorarPaid &&
+    c.honorarUtbetaltBelop != null &&
+    c.honorar != null &&
+    Math.abs(c.honorarUtbetaltBelop - c.honorar) / c.honorar > 0.01
+  );
 }
 
 // ── Inline rate edit ──────────────────────────────────────
-function InlineRateEdit({ value, globalRate, onSave }: {
-  value: number | undefined; globalRate: number | undefined;
+function InlineRateEdit({
+  value,
+  globalRate,
+  onSave,
+}: {
+  value: number | undefined;
+  globalRate: number | undefined;
   onSave: (v: number | undefined) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
@@ -54,68 +82,133 @@ function InlineRateEdit({ value, globalRate, onSave }: {
   const effective = value ?? globalRate;
 
   useEffect(() => {
-    if (editing) { setDraft(value != null ? String(value) : ""); inputRef.current?.focus(); }
-  }, [editing, value]);
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
 
   const commit = async () => {
     const parsed = draft.trim() === "" ? undefined : Number(draft);
-    if (parsed !== undefined && (isNaN(parsed) || parsed < 0 || parsed > 100)) { toast.error("Ugyldig"); return; }
-    await onSave(parsed); setEditing(false);
+    if (parsed !== undefined && (isNaN(parsed) || parsed < 0 || parsed > 100)) {
+      toast.error("Ugyldig");
+      return;
+    }
+    await onSave(parsed);
+    setEditing(false);
   };
 
-  if (editing) return (
-    <span className="inline-flex items-center gap-1">
-      <input ref={inputRef} type="number" min={0} max={100} value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
-        className="w-12 rounded border border-indigo-300 px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400" />
-      <span className="text-xs text-slate-400">%</span>
-      <button onClick={commit} className="text-green-600"><Check className="h-3 w-3" /></button>
-      <button onClick={() => setEditing(false)} className="text-slate-400"><X className="h-3 w-3" /></button>
-    </span>
-  );
+  if (editing)
+    return (
+      <span className="inline-flex items-center gap-1">
+        <input
+          ref={inputRef}
+          type="number"
+          min={0}
+          max={100}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") setEditing(false);
+          }}
+          className="w-12 rounded border border-indigo-300 px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        />
+        <span className="text-xs text-slate-400">%</span>
+        <button onClick={commit} className="text-green-600">
+          <Check className="h-3 w-3" />
+        </button>
+        <button onClick={() => setEditing(false)} className="text-slate-400">
+          <X className="h-3 w-3" />
+        </button>
+      </span>
+    );
 
   return (
-    <button onClick={() => setEditing(true)} className="inline-flex items-center gap-0.5 group">
+    <button
+      onClick={() => {
+        setDraft(value != null ? String(value) : "");
+        setEditing(true);
+      }}
+      className="inline-flex items-center gap-0.5 group"
+    >
       <span className="text-xs text-slate-400">
         {effective != null ? `${effective}%` : "Sett %"}
       </span>
       {effective != null && value == null && (
-        <span className="text-[10px] text-slate-300" title="Bruker global skattetrekk">std</span>
+        <span
+          className="text-[10px] text-slate-300"
+          title="Bruker global skattetrekk"
+        >
+          std
+        </span>
       )}
       <Pencil className="h-2.5 w-2.5 text-slate-200 group-hover:text-slate-400" />
     </button>
   );
 }
 
-function GlobalRateEdit({ value, onSave }: { value: number | undefined; onSave: (v: number | undefined) => Promise<void> }) {
+function GlobalRateEdit({
+  value,
+  onSave,
+}: {
+  value: number | undefined;
+  onSave: (v: number | undefined) => Promise<void>;
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { if (editing) { setDraft(value != null ? String(value) : ""); inputRef.current?.focus(); } }, [editing, value]);
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
 
   const commit = async () => {
     const parsed = draft.trim() === "" ? undefined : Number(draft);
-    if (parsed !== undefined && (isNaN(parsed) || parsed < 0 || parsed > 100)) { toast.error("Ugyldig"); return; }
-    await onSave(parsed); setEditing(false);
+    if (parsed !== undefined && (isNaN(parsed) || parsed < 0 || parsed > 100)) {
+      toast.error("Ugyldig");
+      return;
+    }
+    await onSave(parsed);
+    setEditing(false);
   };
 
-  if (editing) return (
-    <span className="inline-flex items-center gap-1.5">
-      <input ref={inputRef} type="number" min={0} max={100} value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
-        className="w-14 rounded border border-indigo-300 px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
-      <span className="text-slate-400 text-sm">%</span>
-      <button onClick={commit} className="text-green-600"><Check className="h-3.5 w-3.5" /></button>
-      <button onClick={() => setEditing(false)} className="text-slate-400"><X className="h-3.5 w-3.5" /></button>
-    </span>
-  );
+  if (editing)
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <input
+          ref={inputRef}
+          type="number"
+          min={0}
+          max={100}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") setEditing(false);
+          }}
+          className="w-14 rounded border border-indigo-300 px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        />
+        <span className="text-slate-400 text-sm">%</span>
+        <button onClick={commit} className="text-green-600">
+          <Check className="h-3.5 w-3.5" />
+        </button>
+        <button onClick={() => setEditing(false)} className="text-slate-400">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </span>
+    );
 
   return (
-    <button onClick={() => setEditing(true)} className="inline-flex items-center gap-1 font-semibold text-slate-700 hover:text-indigo-600 transition-colors group">
-      {value != null ? `${value}%` : <span className="font-normal text-slate-400">Ikke satt</span>}
+    <button
+      onClick={() => {
+        setDraft(value != null ? String(value) : "");
+        setEditing(true);
+      }}
+      className="inline-flex items-center gap-1 font-semibold text-slate-700 hover:text-indigo-600 transition-colors group"
+    >
+      {value != null ? (
+        `${value}%`
+      ) : (
+        <span className="font-normal text-slate-400">Ikke satt</span>
+      )}
       <Pencil className="h-3 w-3 text-slate-300 group-hover:text-indigo-400" />
     </button>
   );
@@ -124,25 +217,31 @@ function GlobalRateEdit({ value, onSave }: { value: number | undefined; onSave: 
 // ── Main page ─────────────────────────────────────────────
 export default function OkonomiPage() {
   const { user } = useAuth();
-  const { cases, loading } = useCases(user?.uid);
+  const { cases, loading, error } = useCases(user?.uid);
   const { entries } = useTimeEntries(user?.uid);
   const { settings } = useUserSettings(user?.uid);
   const [filter, setFilter] = useState<Filter>("alle");
+  const [search, setSearch] = useState("");
 
   const paidCases = useMemo(() => cases.filter((c) => c.isPaid), [cases]);
 
   const minutesByCaseId = useMemo(() => {
     const map: Record<string, number> = {};
-    entries.forEach((e) => { map[e.caseId] = (map[e.caseId] ?? 0) + e.durationMinutes; });
+    entries.forEach((e) => {
+      map[e.caseId] = (map[e.caseId] ?? 0) + e.durationMinutes;
+    });
     return map;
   }, [entries]);
 
   const globalRate = settings.globalSkattetrekk;
 
   const totals = useMemo(() => {
-    let brutto = 0, nettoSum = 0;
-    let fakturertBrutto = 0, gjenstårFakturering = 0;
-    let utbetaltSum = 0, gjenstårUtbetaling = 0;
+    let brutto = 0,
+      nettoSum = 0;
+    let fakturertBrutto = 0,
+      gjenstårFakturering = 0;
+    let utbetaltSum = 0,
+      gjenstårUtbetaling = 0;
     let avvikCount = 0;
 
     paidCases.forEach((c) => {
@@ -162,20 +261,33 @@ export default function OkonomiPage() {
       }
     });
 
-    return { brutto, netto: nettoSum, fakturertBrutto, gjenstårFakturering, utbetaltSum, gjenstårUtbetaling, avvikCount };
+    return {
+      brutto,
+      netto: nettoSum,
+      fakturertBrutto,
+      gjenstårFakturering,
+      utbetaltSum,
+      gjenstårUtbetaling,
+      avvikCount,
+    };
   }, [paidCases, globalRate]);
 
   const filtered = useMemo(() => {
-    if (filter === "gjenstår") return paidCases.filter((c) => !c.honorarClaimSent || !c.honorarPaid);
-    if (filter === "venter_betaling") return paidCases.filter((c) => c.status === "avsluttet" && c.honorarClaimSent && !c.honorarPaid);
-    if (filter === "avvik") return paidCases.filter((c) => hasAvvik(c));
-    return paidCases;
-  }, [paidCases, filter]);
+    const matching = paidCases.filter((c) =>
+      matchesSearch(search, c.title, c.laerested, c.description),
+    );
+    if (filter === "gjenstår")
+      return matching.filter((c) => !c.honorarClaimSent || !c.honorarPaid);
+    if (filter === "venter_betaling")
+      return matching.filter((c) => c.honorarClaimSent && !c.honorarPaid);
+    if (filter === "avvik") return matching.filter((c) => hasAvvik(c));
+    return matching;
+  }, [paidCases, filter, search]);
 
   const filteredSum = useMemo(() => {
     let brutto = 0;
     let netto = 0;
-    filtered.forEach(c => {
+    filtered.forEach((c) => {
       const b = c.honorar ?? 0;
       brutto += b;
       const rate = c.skattetrekk ?? globalRate;
@@ -184,27 +296,67 @@ export default function OkonomiPage() {
     return { brutto, netto };
   }, [filtered, globalRate]);
 
-  if (loading) return <div className="p-6 text-slate-400 text-sm">Laster...</div>;
+  if (loading)
+    return <div className="p-6 text-slate-400 text-sm">Laster...</div>;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Økonomi</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Betalte oppdrag · honorarkrav · utbetalinger</p>
-      </div>
+    <div className="workspace-page space-y-5">
+      <PageHeading
+        eyebrow="Fra oppdrag til oppgjør"
+        title="Økonomi"
+        description="Følg honorarene, kravene og utbetalingene – hele veien."
+        actions={
+          <button
+            className="secondary-button"
+            disabled={!filtered.length}
+            onClick={() =>
+              exportCsv("timetracker-honorarer.csv", [
+                [
+                  "Sak",
+                  "Lærested",
+                  "Avtalt brutto honorar",
+                  "Krav sendt",
+                  "Utbetalt",
+                  "Registrert utbetalt beløp",
+                ],
+                ...filtered.map((c) => [
+                  c.title,
+                  c.laerested ?? "",
+                  c.honorar ?? 0,
+                  c.honorarClaimSent ? "Ja" : "Nei",
+                  c.honorarPaid ? "Ja" : "Nei",
+                  c.honorarUtbetaltBelop ?? "",
+                ]),
+              ])
+            }
+          >
+            <Download size={16} />
+            Eksporter CSV
+          </button>
+        }
+      />
+      {error && <ErrorState message={error} />}
 
       {/* Summary grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <BigStat
           label="Totalt honorar"
           value={formatNok(totals.brutto)}
-          sub={totals.netto !== totals.brutto ? `${formatNok(totals.netto)} netto` : undefined}
-          detail="brutto, alle betalte oppdrag"
+          sub={
+            totals.netto !== totals.brutto
+              ? `${formatNok(totals.netto)} netto`
+              : undefined
+          }
+          detail="brutto, alle oppdrag med honorar"
         />
         <BigStat
           label="Krav sendt"
           value={formatNok(totals.fakturertBrutto)}
-          sub={totals.gjenstårFakturering > 0 ? `${formatNok(totals.gjenstårFakturering)} ikke sendt` : "Alle krav sendt"}
+          sub={
+            totals.gjenstårFakturering > 0
+              ? `${formatNok(totals.gjenstårFakturering)} ikke sendt`
+              : "Alle krav sendt"
+          }
           detail="brutto"
           warn={totals.gjenstårFakturering > 0}
         />
@@ -239,27 +391,57 @@ export default function OkonomiPage() {
       </div>
 
       {/* Filter */}
-      <div className="flex gap-1 p-1 rounded-xl bg-slate-100 w-fit">
-        {([
-          ["alle", "Alle"],
-          ["gjenstår", "Gjenstår"],
-          ["venter_betaling", "Venter betaling"],
-          ["avvik", `Avvik${totals.avvikCount > 0 ? ` (${totals.avvikCount})` : ""}`],
-        ] as [Filter, string][]).map(([f, label]) => (
-          <button key={f} onClick={() => setFilter(f)}
-            className={cn("px-4 py-1.5 text-sm font-medium rounded-lg transition-all",
-              filter === f ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            )}>
+      <div className="flex flex-wrap gap-1 p-1 rounded-xl bg-slate-100 w-fit">
+        {(
+          [
+            ["alle", "Alle"],
+            ["gjenstår", "Gjenstår"],
+            ["venter_betaling", "Venter betaling"],
+            [
+              "avvik",
+              `Avvik${totals.avvikCount > 0 ? ` (${totals.avvikCount})` : ""}`,
+            ],
+          ] as [Filter, string][]
+        ).map(([f, label]) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={cn(
+              "px-4 py-1.5 text-sm font-medium rounded-lg transition-all",
+              filter === f
+                ? "bg-white text-slate-900 shadow-sm"
+                : "text-slate-500 hover:text-slate-700",
+            )}
+          >
             {label}
           </button>
         ))}
       </div>
 
       {/* Table */}
+      <div className="filter-toolbar">
+        <label className="filter-search">
+          <Search size={17} />
+          <input
+            aria-label="Søk i honorarer"
+            placeholder="Søk etter sak eller lærested…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+        <span className="filter-count">{filtered.length} oppdrag</span>
+        {search && (
+          <button className="filter-reset" onClick={() => setSearch("")}>
+            Nullstill
+          </button>
+        )}
+      </div>
       {filtered.length === 0 ? (
-        <div className="text-center py-16 text-slate-400 font-medium">Ingen oppdrag å vise</div>
+        <div className="text-center py-16 text-slate-400 font-medium">
+          Ingen oppdrag å vise
+        </div>
       ) : (
-        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+        <div className="economy-table rounded-xl border border-slate-200 bg-white overflow-x-auto">
           <div className="grid grid-cols-[1fr_155px_140px_140px_140px] border-b border-slate-100 bg-slate-50">
             {[
               { label: "Sak", hint: "" },
@@ -268,26 +450,49 @@ export default function OkonomiPage() {
               { label: "Krav sendt", hint: "" },
               { label: "Utbetalt", hint: "faktisk beløp" },
             ].map(({ label, hint }, i) => (
-              <div key={label} className={cn("px-4 py-2.5", i > 0 && "border-l border-slate-100")}>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{label}</p>
-                {hint && <p className="text-xs text-slate-300 font-normal normal-case tracking-normal">{hint}</p>}
+              <div
+                key={label}
+                className={cn(
+                  "px-4 py-2.5",
+                  i > 0 && "border-l border-slate-100",
+                )}
+              >
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  {label}
+                </p>
+                {hint && (
+                  <p className="text-xs text-slate-300 font-normal normal-case tracking-normal">
+                    {hint}
+                  </p>
+                )}
               </div>
             ))}
           </div>
           <div className="divide-y divide-slate-100">
             {filtered.map((c) => (
-              <CaseRow key={c.id} userId={user!.uid} c={c} minutes={minutesByCaseId[c.id] ?? 0} globalRate={globalRate} />
+              <CaseRow
+                key={c.id}
+                userId={user!.uid}
+                c={c}
+                minutes={minutesByCaseId[c.id] ?? 0}
+                globalRate={globalRate}
+              />
             ))}
             {filtered.length > 0 && (
               <div className="grid grid-cols-[1fr_155px_140px_140px_140px] bg-slate-50 border-t border-slate-200">
                 <div className="px-4 py-3 flex items-center justify-end">
-                  <span className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Sum vist</span>
+                  <span className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+                    Sum vist
+                  </span>
                 </div>
                 <div className="px-4 py-3 border-l border-slate-200">
-                  <p className="text-sm font-bold text-slate-900">{formatNok(filteredSum.brutto)}</p>
+                  <p className="text-sm font-bold text-slate-900">
+                    {formatNok(filteredSum.brutto)}
+                  </p>
                   {filteredSum.netto !== filteredSum.brutto && (
                     <p className="text-xs font-semibold text-emerald-700 mt-0.5">
-                      {formatNok(filteredSum.netto)} <span className="text-slate-400 font-normal">netto</span>
+                      {formatNok(filteredSum.netto)}{" "}
+                      <span className="text-slate-400 font-normal">netto</span>
                     </p>
                   )}
                 </div>
@@ -301,27 +506,85 @@ export default function OkonomiPage() {
   );
 }
 
-function BigStat({ label, value, sub, detail, green, warn }: {
-  label: string; value: string; sub?: string; detail?: string; green?: boolean; warn?: boolean;
+function BigStat({
+  label,
+  value,
+  sub,
+  detail,
+  green,
+  warn,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  detail?: string;
+  green?: boolean;
+  warn?: boolean;
 }) {
   return (
-    <div className={cn("rounded-xl border px-4 py-3",
-      warn ? "border-amber-200 bg-amber-50" : green ? "border-emerald-100 bg-emerald-50" : "border-slate-200 bg-white"
-    )}>
-      <p className={cn("text-xs font-medium mb-1",
-        warn ? "text-amber-600" : green ? "text-emerald-600" : "text-slate-400"
-      )}>{label}</p>
-      <p className={cn("text-xl font-bold",
-        warn ? "text-amber-700" : green ? "text-emerald-700" : "text-slate-900"
-      )}>{value}</p>
-      {sub && <p className={cn("text-sm mt-1 font-semibold", warn ? "text-amber-600" : green ? "text-emerald-600" : "text-slate-700")}>{sub}</p>}
+    <div
+      className={cn(
+        "rounded-xl border px-4 py-3",
+        warn
+          ? "border-amber-200 bg-amber-50"
+          : green
+            ? "border-emerald-100 bg-emerald-50"
+            : "border-slate-200 bg-white",
+      )}
+    >
+      <p
+        className={cn(
+          "text-xs font-medium mb-1",
+          warn
+            ? "text-amber-600"
+            : green
+              ? "text-emerald-600"
+              : "text-slate-400",
+        )}
+      >
+        {label}
+      </p>
+      <p
+        className={cn(
+          "text-xl font-bold",
+          warn
+            ? "text-amber-700"
+            : green
+              ? "text-emerald-700"
+              : "text-slate-900",
+        )}
+      >
+        {value}
+      </p>
+      {sub && (
+        <p
+          className={cn(
+            "text-sm mt-1 font-semibold",
+            warn
+              ? "text-amber-600"
+              : green
+                ? "text-emerald-600"
+                : "text-slate-700",
+          )}
+        >
+          {sub}
+        </p>
+      )}
       {detail && <p className="text-xs text-slate-400 mt-0.5">{detail}</p>}
     </div>
   );
 }
 
-function CaseRow({ userId, c, minutes, globalRate }: {
-  userId: string; c: Case; minutes: number; globalRate: number | undefined;
+function CaseRow({
+  userId,
+  c,
+  minutes,
+  globalRate,
+}: {
+  userId: string;
+  c: Case;
+  minutes: number;
+  globalRate: number | undefined;
 }) {
   const router = useRouter();
   const [sentCalOpen, setSentCalOpen] = useState(false);
@@ -336,36 +599,66 @@ function CaseRow({ userId, c, minutes, globalRate }: {
   const markSent = async (date: Date) => {
     setSaving(true);
     try {
-      await updateCase(userId, c.id, { honorarClaimSent: true, honorarClaimSentDate: date });
+      await updateCase(userId, c.id, {
+        honorarClaimSent: true,
+        honorarClaimSentDate: date,
+      });
       toast.success("Krav markert som sendt");
-    } catch { toast.error("Noe gikk galt"); }
-    finally { setSaving(false); setSentCalOpen(false); }
+    } catch {
+      toast.error("Noe gikk galt");
+    } finally {
+      setSaving(false);
+      setSentCalOpen(false);
+    }
   };
 
   const unmarkSent = async () => {
     setSaving(true);
-    try { await updateCase(userId, c.id, { honorarClaimSent: false }); toast.success("Tilbakestilt"); }
-    catch { toast.error("Noe gikk galt"); }
-    finally { setSaving(false); }
+    try {
+      await updateCase(userId, c.id, { honorarClaimSent: false });
+      toast.success("Tilbakestilt");
+    } catch {
+      toast.error("Noe gikk galt");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <div className={cn("grid grid-cols-[1fr_155px_140px_140px_140px] hover:bg-slate-50/70 transition-colors", avvik && "bg-amber-50/30")}>
+    <div
+      className={cn(
+        "grid grid-cols-[1fr_155px_140px_140px_140px] hover:bg-slate-50/70 transition-colors",
+        avvik && "bg-amber-50/30",
+      )}
+    >
       {/* Sak */}
-      <div className="px-4 py-3 cursor-pointer min-w-0" onClick={() => router.push(`/cases/${c.id}`)}>
+      <div
+        className="px-4 py-3 cursor-pointer min-w-0"
+        onClick={() => router.push(`/cases/${c.id}`)}
+      >
         <div className="flex items-start gap-1.5">
           <p className="text-sm font-semibold text-slate-800 truncate hover:text-indigo-600 transition-colors leading-snug">
             {c.title}
           </p>
-          {avvik && <span title="Avvik i utbetaling"><AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" /></span>}
+          {avvik && (
+            <span title="Avvik i utbetaling">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 mt-0.5">
-          {isForfalt
-            ? <span className="text-xs font-medium text-amber-600 flex items-center gap-0.5"><AlertCircle className="h-3 w-3" /> Forfalt</span>
-            : <span className="text-xs text-slate-400">Pågår</span>
-          }
+          {isForfalt ? (
+            <span className="text-xs font-medium text-amber-600 flex items-center gap-0.5">
+              <AlertCircle className="h-3 w-3" /> Forfalt
+            </span>
+          ) : (
+            <span className="text-xs text-slate-400">Pågår</span>
+          )}
           <span className="text-slate-200 text-xs">·</span>
-          <span className="text-xs text-slate-400 flex items-center gap-0.5"><Clock className="h-3 w-3" />{minutesToHours(minutes)}</span>
+          <span className="text-xs text-slate-400 flex items-center gap-0.5">
+            <Clock className="h-3 w-3" />
+            {minutesToHours(minutes)}
+          </span>
         </div>
       </div>
 
@@ -373,24 +666,39 @@ function CaseRow({ userId, c, minutes, globalRate }: {
       <div className="px-4 py-3 border-l border-slate-100">
         {brutto > 0 ? (
           <>
-            <p className="text-sm font-semibold text-slate-800">{formatNok(brutto)}</p>
+            <p className="text-sm font-semibold text-slate-800">
+              {formatNok(brutto)}
+            </p>
             {netto != null && netto !== brutto && (
               <p className="text-xs font-medium text-emerald-700 mt-0.5">
-                {formatNok(netto)} <span className="text-slate-400 font-normal">netto</span>
+                {formatNok(netto)}{" "}
+                <span className="text-slate-400 font-normal">netto</span>
               </p>
             )}
             <div className="mt-1">
-              <InlineRateEdit value={c.skattetrekk} globalRate={globalRate}
-                onSave={async (v) => { await updateCase(userId, c.id, { skattetrekk: v }); toast.success("Oppdatert"); }}
+              <InlineRateEdit
+                value={c.skattetrekk}
+                globalRate={globalRate}
+                onSave={async (v) => {
+                  await updateCase(userId, c.id, { skattetrekk: v });
+                  toast.success("Oppdatert");
+                }}
               />
             </div>
           </>
-        ) : <span className="text-sm text-slate-300">—</span>}
+        ) : (
+          <span className="text-sm text-slate-300">—</span>
+        )}
       </div>
 
       {/* Signert */}
       <div className="px-4 py-3 border-l border-slate-100">
-        <SignertAvtaleSection userId={userId} caseData={c} onUpdate={() => {}} compact />
+        <SignertAvtaleSection
+          userId={userId}
+          caseData={c}
+          onUpdate={() => {}}
+          compact
+        />
       </div>
 
       {/* Krav sendt */}
@@ -400,23 +708,51 @@ function CaseRow({ userId, c, minutes, globalRate }: {
             <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
             <div>
               <p className="text-xs font-medium text-emerald-700">Sendt</p>
-              {c.honorarClaimSentDate && <p className="text-xs text-slate-400">{format(c.honorarClaimSentDate, "d. MMM yyyy", { locale: nb })}</p>}
+              {c.honorarClaimSentDate && (
+                <p className="text-xs text-slate-400">
+                  {format(c.honorarClaimSentDate, "d. MMM yyyy", {
+                    locale: nb,
+                  })}
+                </p>
+              )}
             </div>
-            <button onClick={unmarkSent} disabled={saving} className="ml-1 text-slate-200 hover:text-red-400 transition-colors mt-0.5">
+            <button
+              onClick={unmarkSent}
+              disabled={saving}
+              className="ml-1 text-slate-200 hover:text-red-400 transition-colors mt-0.5"
+            >
               <X className="h-3 w-3" />
             </button>
           </div>
         ) : (
           <Popover open={sentCalOpen} onOpenChange={setSentCalOpen}>
-            <PopoverTrigger disabled={saving} className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-700 transition-colors disabled:opacity-50 group">
+            <PopoverTrigger
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-700 transition-colors disabled:opacity-50 group"
+            >
               <Circle className="h-4 w-4 text-slate-200 group-hover:text-slate-300 shrink-0" />
               <span>Merk sendt</span>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
-              <div className="p-3 border-b border-slate-100"><p className="text-xs font-semibold text-slate-700">Dato for utsendelse</p></div>
-              <Calendar mode="single" selected={undefined} onSelect={(d) => d && markSent(d)} locale={nb} initialFocus />
+              <div className="p-3 border-b border-slate-100">
+                <p className="text-xs font-semibold text-slate-700">
+                  Dato for utsendelse
+                </p>
+              </div>
+              <Calendar
+                mode="single"
+                selected={undefined}
+                onSelect={(d) => d && markSent(d)}
+                locale={nb}
+                initialFocus
+              />
               <div className="p-3 border-t border-slate-100">
-                <button onClick={() => markSent(new Date())} className="text-xs text-indigo-600 font-medium hover:text-indigo-800">Bruk dagens dato</button>
+                <button
+                  onClick={() => markSent(new Date())}
+                  className="text-xs text-indigo-600 font-medium hover:text-indigo-800"
+                >
+                  Bruk dagens dato
+                </button>
               </div>
             </PopoverContent>
           </Popover>
@@ -425,7 +761,12 @@ function CaseRow({ userId, c, minutes, globalRate }: {
 
       {/* Utbetalt */}
       <div className="px-4 py-3 border-l border-slate-100">
-        <UtbetalingSection userId={userId} caseData={c} onUpdate={() => {}} compact />
+        <UtbetalingSection
+          userId={userId}
+          caseData={c}
+          onUpdate={() => {}}
+          compact
+        />
       </div>
     </div>
   );

@@ -1,605 +1,526 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
-import { useCases } from "@/hooks/useCases";
-import { useTimeEntries } from "@/hooks/useTimeEntries";
-import { useCategories } from "@/hooks/useCategories";
-import { Button } from "@/components/ui/button";
-import { CategoryBadge } from "@/components/CategoryBadge";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Download, ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
+import { useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
-  startOfDay, endOfDay,
-  startOfWeek, endOfWeek,
-  startOfMonth, endOfMonth,
-  startOfYear, endOfYear,
-  addDays, subDays,
-  addWeeks, subWeeks,
-  addMonths, subMonths,
-  addYears, subYears,
-  isWithinInterval,
+  addDays,
+  addMonths,
+  addWeeks,
+  addYears,
+  endOfDay,
   format,
-  eachDayOfInterval,
-  eachMonthOfInterval,
-  isSameDay,
+  isValid,
+  parseISO,
+  differenceInCalendarDays,
 } from "date-fns";
 import { nb } from "date-fns/locale";
+import {
+  ArrowDownToLine,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  Files,
+  TrendingUp,
+} from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useCases } from "@/hooks/useCases";
+import { useCategories } from "@/hooks/useCategories";
+import { useTimeEntries } from "@/hooks/useTimeEntries";
+import { ActivityChart } from "@/components/ActivityChart";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  Metric,
+  PageHeading,
+  Panel,
+} from "@/components/workspace-ui";
 import { cn } from "@/lib/utils";
-import { useRouter } from "next/navigation";
-
-type Period = "dag" | "uke" | "måned" | "år";
-
-function minutesToHours(min: number): string {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  if (h === 0) return `${m}m`;
-  if (m === 0) return `${h}t`;
-  return `${h}t ${m}m`;
-}
+import {
+  duration,
+  exportCsv,
+  inRange,
+  minutesByCase,
+  periodRange,
+  previousAnchor,
+  PERIOD_LABELS,
+  sumMinutes,
+  type Period,
+} from "@/lib/insights";
 
 export default function ReportsPage() {
-  const { user } = useAuth();
-  const { cases } = useCases(user?.uid);
-  const { entries } = useTimeEntries(user?.uid);
-  const { categories } = useCategories(user?.uid);
-
-  const [period, setPeriod] = useState<Period>("dag");
-  const [anchor, setAnchor] = useState(new Date());
-  const [view, setView] = useState<"poster" | "kategori">("poster");
-  const [hiddenCats, setHiddenCats] = useState<Set<string>>(new Set());
-
-  const { start, end } = useMemo(() => {
-    if (period === "dag") return { start: startOfDay(anchor), end: endOfDay(anchor) };
-    if (period === "uke") return { start: startOfWeek(anchor, { weekStartsOn: 1 }), end: endOfWeek(anchor, { weekStartsOn: 1 }) };
-    if (period === "måned") return { start: startOfMonth(anchor), end: endOfMonth(anchor) };
-    return { start: startOfYear(anchor), end: endOfYear(anchor) };
-  }, [period, anchor]);
-
-  const filtered = useMemo(
-    () => entries.filter((e) => {
-      if (!isWithinInterval(e.date, { start, end })) return false;
-      if (hiddenCats.size === 0) return true;
-      const catId = cases.find((c) => c.id === e.caseId)?.categoryId ?? "__ingen__";
-      return !hiddenCats.has(catId);
-    }),
-    [entries, start, end, hiddenCats, cases]
+  const params = useSearchParams();
+  const candidateDate = params.get("date")
+    ? parseISO(params.get("date")!)
+    : new Date();
+  const candidatePeriod = params.get("period") ?? "week";
+  return (
+    <ReportsContent
+      key={params.toString()}
+      initialDate={isValid(candidateDate) ? candidateDate : new Date()}
+      initialPeriod={
+        Object.keys(PERIOD_LABELS).includes(candidatePeriod)
+          ? (candidatePeriod as Period)
+          : "week"
+      }
+    />
   );
+}
 
-  const totalMinutes = filtered.reduce((sum, e) => sum + e.durationMinutes, 0);
-
-  function navigate(dir: -1 | 1) {
-    if (period === "dag") setAnchor(dir === 1 ? addDays(anchor, 1) : subDays(anchor, 1));
-    else if (period === "uke") setAnchor(dir === 1 ? addWeeks(anchor, 1) : subWeeks(anchor, 1));
-    else if (period === "måned") setAnchor(dir === 1 ? addMonths(anchor, 1) : subMonths(anchor, 1));
-    else setAnchor(dir === 1 ? addYears(anchor, 1) : subYears(anchor, 1));
+function ReportsContent({
+  initialDate,
+  initialPeriod,
+}: {
+  initialDate: Date;
+  initialPeriod: Period;
+}) {
+  const { user } = useAuth();
+  const {
+    cases,
+    loading: casesLoading,
+    error: caseError,
+  } = useCases(user?.uid);
+  const { categories } = useCategories(user?.uid);
+  const { entries, loading, error } = useTimeEntries(user?.uid);
+  const [anchor, setAnchor] = useState(initialDate);
+  const [period, setPeriod] = useState<Period>(initialPeriod);
+  const [category, setCategory] = useState("");
+  const [caseId, setCaseId] = useState("");
+  const [view, setView] = useState<"cases" | "entries" | "categories">("cases");
+  const range = periodRange(anchor, period);
+  const caseMap = new Map(cases.map((c) => [c.id, c]));
+  const categoryMap = new Map(categories.map((c) => [c.id, c]));
+  const selected = entries.filter(
+    (e) =>
+      (!caseId || e.caseId === caseId) &&
+      (!category || caseMap.get(e.caseId)?.categoryId === category),
+  );
+  const filtered = selected.filter((e) =>
+    inRange(e.date, range.start, range.end),
+  );
+  const total = sumMinutes(filtered);
+  const activeDays = new Set(filtered.map((e) => format(e.date, "yyyy-MM-dd")))
+    .size;
+  const byCase = minutesByCase(filtered);
+  const caseRows = [...byCase.entries()].sort((a, b) => b[1] - a[1]);
+  const categoryRows = new Map<string, number>();
+  for (const e of filtered) {
+    const id = caseMap.get(e.caseId)?.categoryId ?? "other";
+    categoryRows.set(id, (categoryRows.get(id) ?? 0) + e.durationMinutes);
   }
-
-  const periodLabel = useMemo(() => {
-    if (period === "dag") return format(anchor, "EEEE d. MMMM yyyy", { locale: nb });
-    if (period === "uke") {
-      const ws = startOfWeek(anchor, { weekStartsOn: 1 });
-      const we = endOfWeek(anchor, { weekStartsOn: 1 });
-      return `Uke ${format(ws, "w")} · ${format(ws, "d. MMM", { locale: nb })} – ${format(we, "d. MMM yyyy", { locale: nb })}`;
-    }
-    if (period === "måned") return format(anchor, "MMMM yyyy", { locale: nb });
-    return format(anchor, "yyyy");
-  }, [period, anchor]);
-
-  const getCaseById = (id: string) => cases.find((c) => c.id === id);
-  const getCategoryById = (id: string) => categories.find((c) => c.id === id);
-
-  const handleExport = () => {
-    const rows = [
-      ["Dato", "Fra", "Til", "Sak", "Kategori", "Timer", "Beskrivelse"],
-      ...filtered.map((e) => {
-        const c = getCaseById(e.caseId);
-        const cat = getCategoryById(c?.categoryId ?? "");
-        return [
+  const rankedCategories = [...categoryRows.entries()].sort(
+    (a, b) => b[1] - a[1],
+  );
+  const prior = periodRange(previousAnchor(anchor, period), period);
+  const now = new Date();
+  const isCurrent = inRange(now, range.start, range.end);
+  const elapsedDays = differenceInCalendarDays(now, range.start);
+  const compareEnd = isCurrent
+    ? new Date(
+        Math.min(
+          endOfDay(addDays(prior.start, elapsedDays)).getTime(),
+          prior.end.getTime(),
+        ),
+      )
+    : prior.end;
+  const compareTotal = sumMinutes(
+    selected.filter((e) => inRange(e.date, prior.start, compareEnd)),
+  );
+  const currentTotal = isCurrent
+    ? sumMinutes(filtered.filter((e) => e.date <= endOfDay(now)))
+    : total;
+  const diff = currentTotal - compareTotal;
+  const title =
+    period === "day"
+      ? format(anchor, "EEEE d. MMM yyyy", { locale: nb })
+      : period === "week"
+        ? `${format(range.start, "d. MMM", { locale: nb })} – ${format(range.end, "d. MMM yyyy", { locale: nb })}`
+        : format(anchor, period === "month" ? "MMMM yyyy" : "yyyy", {
+            locale: nb,
+          });
+  function navigate(direction: number) {
+    setAnchor((d) =>
+      period === "day"
+        ? addDays(d, direction)
+        : period === "week"
+          ? addWeeks(d, direction)
+          : period === "month"
+            ? addMonths(d, direction)
+            : addYears(d, direction),
+    );
+  }
+  function download() {
+    exportCsv(
+      `timetracker-${format(range.start, "yyyyMMdd")}-${format(range.end, "yyyyMMdd")}.csv`,
+      [
+        [
+          "Dato",
+          "Fra",
+          "Til",
+          "Sak",
+          "Kategori",
+          "Minutter",
+          "Timer",
+          "Beskrivelse",
+        ],
+        ...filtered.map((e) => [
           format(e.date, "yyyy-MM-dd"),
           e.startTime ?? "",
           e.endTime ?? "",
-          c?.title ?? "",
-          cat?.name ?? "",
-          minutesToHours(e.durationMinutes),
+          caseMap.get(e.caseId)?.title ?? "Slettet sak",
+          categoryMap.get(caseMap.get(e.caseId)?.categoryId ?? "")?.name ??
+            "Uten kategori",
+          e.durationMinutes,
+          (e.durationMinutes / 60).toFixed(2).replace(".", ","),
           e.description,
-        ];
-      }),
-    ];
-    const csv = rows.map((r) => r.join(";")).join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `rapport-${format(start, "yyyyMMdd")}-${format(end, "yyyyMMdd")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+        ]),
+      ],
+    );
+  }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Rapporter</h1>
-        <Button variant="outline" onClick={handleExport} size="sm">
-          <Download className="h-4 w-4 mr-1.5" />
-          Eksporter CSV
-        </Button>
-      </div>
-
-      {/* Period + view tabs + category filter */}
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
-        <div className="flex gap-1 p-1 rounded-xl bg-slate-100 w-fit">
-          {(["dag", "uke", "måned", "år"] as Period[]).map((p) => (
+    <div className="workspace-page">
+      <PageHeading
+        eyebrow="Forstå arbeidsdagen"
+        title="Innsikt & rapporter"
+        description="Se mønstrene, finn tidsbruken og ta med tallene videre."
+        actions={
+          <button
+            className="secondary-button"
+            onClick={download}
+            disabled={!filtered.length || loading || !!error}
+          >
+            <ArrowDownToLine size={16} />
+            Eksporter CSV
+          </button>
+        }
+      />
+      <div className="report-period-nav">
+        <button
+          className="icon-button"
+          onClick={() => navigate(-1)}
+          aria-label="Forrige periode"
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <h2>{title}</h2>
+        <button
+          className="icon-button"
+          onClick={() => navigate(1)}
+          aria-label="Neste periode"
+        >
+          <ChevronRight size={18} />
+        </button>
+        <button className="text-link" onClick={() => setAnchor(new Date())}>
+          Til i dag
+        </button>
+        <div className="segmented-control">
+          {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
             <button
               key={p}
+              className={cn(period === p && "selected")}
+              aria-pressed={period === p}
               onClick={() => setPeriod(p)}
-              className={cn(
-                "px-4 py-1.5 text-sm font-medium rounded-lg transition-all capitalize",
-                period === p
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              )}
             >
-              {p.charAt(0).toUpperCase() + p.slice(1)}
+              {PERIOD_LABELS[p]}
             </button>
           ))}
         </div>
-        <div className="flex gap-1 p-1 rounded-xl bg-slate-100 w-fit">
-          {(["poster", "kategori"] as const).map((v) => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={cn(
-                "px-4 py-1.5 text-sm font-medium rounded-lg transition-all capitalize",
-                view === v
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              )}
-            >
-              {v.charAt(0).toUpperCase() + v.slice(1)}
-            </button>
+      </div>
+      <div className="filter-toolbar">
+        <span className="section-kicker">Vis tid for</span>
+        <select
+          className="filter-select"
+          aria-label="Filtrer rapport på kategori"
+          value={category}
+          onChange={(e) => {
+            setCategory(e.target.value);
+            setCaseId("");
+          }}
+        >
+          <option value="">Alle kategorier</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
           ))}
-        </div>
-
-        {/* Category filter */}
-        <Popover>
-          <PopoverTrigger className={cn(
-            "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium transition-colors border",
-            hiddenCats.size > 0
-              ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-              : "bg-slate-100 border-transparent text-slate-500 hover:text-slate-700"
-          )}>
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-            {hiddenCats.size > 0
-              ? `${categories.length - hiddenCats.size} av ${categories.length} kategorier`
-              : "Kategorier"}
-          </PopoverTrigger>
-          <PopoverContent className="w-56 p-2" align="start">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-2 py-1.5">Vis kategorier</p>
-            {/* All toggle */}
-            <button
-              onClick={() => setHiddenCats(new Set())}
-              className={cn(
-                "w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm transition-colors",
-                hiddenCats.size === 0 ? "bg-slate-100 text-slate-900 font-medium" : "text-slate-500 hover:bg-slate-50"
-              )}
-            >
-              <span className="h-3 w-3 rounded-full border-2 border-slate-400 shrink-0" />
-              Alle kategorier
-            </button>
-            <div className="my-1 border-t border-slate-100" />
-            {categories.map((cat) => {
-              const hidden = hiddenCats.has(cat.id);
-              return (
-                <button
-                  key={cat.id}
-                  onClick={() => {
-                    setHiddenCats((prev) => {
-                      const next = new Set(prev);
-                      if (hidden) next.delete(cat.id);
-                      else next.add(cat.id);
-                      return next;
-                    });
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm transition-colors",
-                    hidden ? "text-slate-400 hover:bg-slate-50" : "text-slate-700 hover:bg-slate-50"
-                  )}
-                >
-                  <span
-                    className={cn("h-3 w-3 rounded-full shrink-0 transition-opacity", hidden && "opacity-30")}
-                    style={{ backgroundColor: cat.color }}
-                  />
-                  <span className={cn("flex-1 text-left", hidden && "line-through opacity-50")}>{cat.name}</span>
-                  {!hidden && <span className="text-xs text-slate-300">✓</span>}
-                </button>
-              );
-            })}
-            {categories.length === 0 && (
-              <p className="text-xs text-slate-400 px-2 py-1">Ingen kategorier opprettet</p>
-            )}
-          </PopoverContent>
-        </Popover>
+        </select>
+        <select
+          className="filter-select"
+          aria-label="Filtrer rapport på sak"
+          value={caseId}
+          onChange={(e) => setCaseId(e.target.value)}
+        >
+          <option value="">Alle saker</option>
+          {cases
+            .filter((c) => !category || c.categoryId === category)
+            .map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.title}
+              </option>
+            ))}
+        </select>
+        {(caseId || category) && (
+          <button
+            className="filter-reset"
+            onClick={() => {
+              setCategory("");
+              setCaseId("");
+            }}
+          >
+            Nullstill
+          </button>
+        )}
+        <span className="filter-count ml-auto">
+          {filtered.length} registreringer i utvalget
+        </span>
       </div>
-
-      {/* Navigator */}
-      <div className="flex items-center justify-between mb-6 rounded-xl border border-slate-200 bg-white px-4 py-3">
-        <button onClick={() => navigate(-1)} className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
-          <ChevronLeft className="h-5 w-5 text-slate-600" />
-        </button>
-        <div className="text-center">
-          <p className="text-sm font-semibold text-slate-800 capitalize">{periodLabel}</p>
-          <p className="text-xs text-slate-400">Totalt: {minutesToHours(totalMinutes)} · {filtered.length} poster</p>
-        </div>
-        <button onClick={() => navigate(1)} className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
-          <ChevronRight className="h-5 w-5 text-slate-600" />
-        </button>
-      </div>
-
-      {/* Content */}
-      {filtered.length === 0 ? (
-        <div className="text-center py-16 text-slate-400">
-          <p className="font-medium">Ingen timer registrert for denne perioden</p>
-        </div>
-      ) : view === "kategori" ? (
-        <KategoriView entries={filtered} getCaseById={getCaseById} getCategoryById={getCategoryById} />
+      {error || caseError ? (
+        <ErrorState message={error || caseError!} />
+      ) : loading || casesLoading ? (
+        <LoadingState label="Beregner rapporten…" />
       ) : (
         <>
-          {period === "dag" && <DagView entries={filtered} getCaseById={getCaseById} getCategoryById={getCategoryById} />}
-          {period === "uke" && <UkeView entries={filtered} start={start} end={end} getCaseById={getCaseById} getCategoryById={getCategoryById} />}
-          {period === "måned" && <MånedView entries={filtered} start={start} end={end} getCaseById={getCaseById} getCategoryById={getCategoryById} />}
-          {period === "år" && <ÅrView entries={filtered} start={start} end={end} getCaseById={getCaseById} getCategoryById={getCategoryById} />}
-        </>
-      )}
-    </div>
-  );
-}
-
-// ── Kategori-visning ─────────────────────────────────────
-function KategoriView({ entries, getCaseById, getCategoryById }: {
-  entries: ReturnType<typeof useTimeEntries>["entries"];
-  getCaseById: (id: string) => ReturnType<typeof useCases>["cases"][0] | undefined;
-  getCategoryById: (id: string) => ReturnType<typeof useCategories>["categories"][0] | undefined;
-}) {
-  const router = useRouter();
-  const total = entries.reduce((s, e) => s + e.durationMinutes, 0);
-
-  const byCategory = useMemo(() => {
-    const map: Record<string, { minutes: number; cases: Record<string, number> }> = {};
-    entries.forEach((e) => {
-      const c = getCaseById(e.caseId);
-      const catId = c?.categoryId || "__ingen__";
-      if (!map[catId]) map[catId] = { minutes: 0, cases: {} };
-      map[catId].minutes += e.durationMinutes;
-      map[catId].cases[e.caseId] = (map[catId].cases[e.caseId] ?? 0) + e.durationMinutes;
-    });
-    return Object.entries(map)
-      .map(([catId, data]) => ({
-        catId,
-        category: catId === "__ingen__" ? undefined : getCategoryById(catId),
-        minutes: data.minutes,
-        pct: total > 0 ? Math.round((data.minutes / total) * 100) : 0,
-        cases: Object.entries(data.cases)
-          .map(([id, min]) => ({ id, title: getCaseById(id)?.title ?? "Ukjent sak", min }))
-          .sort((a, b) => b.min - a.min),
-      }))
-      .sort((a, b) => b.minutes - a.minutes);
-  }, [entries, getCaseById, getCategoryById, total]);
-
-  return (
-    <div className="space-y-3">
-      {byCategory.map((group) => {
-        const color = group.category?.color ?? "#94a3b8";
-        return (
-          <div key={group.catId} className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-            {/* Kategori-header */}
-            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-50 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <span
-                  className="inline-block h-3 w-3 rounded-full shrink-0"
-                  style={{ backgroundColor: color }}
-                />
-                <span className="text-sm font-semibold text-slate-700">
-                  {group.category?.name ?? "Ingen kategori"}
-                </span>
-                <span className="text-xs text-slate-400">{group.pct}%</span>
-              </div>
-              <span className="text-sm font-bold text-slate-800">{minutesToHours(group.minutes)}</span>
-            </div>
-
-            {/* Fremdriftslinje */}
-            <div className="h-1 bg-slate-100">
-              <div
-                className="h-full transition-all"
-                style={{ width: `${group.pct}%`, backgroundColor: color }}
+          <div className="metric-grid">
+            <Metric
+              label="Registrert tid"
+              value={duration(total)}
+              detail="Totalt i valgt periode"
+              icon={<Clock3 size={17} />}
+              tone="brand"
+            />
+            <Metric
+              label="Mot forrige periode"
+              value={
+                compareTotal || currentTotal
+                  ? `${diff >= 0 ? "+" : "−"}${duration(Math.abs(diff))}`
+                  : "—"
+              }
+              detail={
+                isCurrent
+                  ? "Sammenlignet med like mange kalenderdager"
+                  : "Sammenlignet med hele forrige periode"
+              }
+              icon={<TrendingUp size={17} />}
+            />
+            <Metric
+              label="Snitt per aktiv dag"
+              value={duration(activeDays ? total / activeDays : 0)}
+              detail={`${activeDays} dager med registrert arbeid`}
+              icon={<CalendarDays size={17} />}
+            />
+            <Metric
+              label="Saker jobbet med"
+              value={caseRows.length}
+              detail={`${filtered.length} timeregistreringer i perioden`}
+              icon={<Files size={17} />}
+            />
+          </div>
+          <div className="report-grid">
+            <Panel
+              title="Arbeidsrytme"
+              subtitle="Klikk på en søyle for å utforske perioden"
+            >
+              <ActivityChart
+                entries={filtered}
+                start={range.start}
+                end={range.end}
+                period={period}
               />
-            </div>
-
-            {/* Saker i kategorien */}
-            <div className="divide-y divide-slate-50">
-              {group.cases.map((row) => (
-                <div
-                  key={row.id}
-                  onClick={() => router.push(`/cases/${row.id}`)}
-                  className="flex items-center justify-between px-5 py-2.5 cursor-pointer hover:bg-slate-50 transition-colors"
-                >
-                  <span className="text-sm text-slate-600 truncate">{row.title}</span>
-                  <span className="text-sm font-medium text-slate-700 shrink-0 ml-4">
-                    {minutesToHours(row.min)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
-
-      {/* Totalt */}
-      <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-5 py-3 flex justify-between">
-        <span className="text-sm font-semibold text-indigo-700">Totalt</span>
-        <span className="text-sm font-bold text-indigo-900">{minutesToHours(total)}</span>
-      </div>
-    </div>
-  );
-}
-
-// ── Dag-visning ──────────────────────────────────────────
-function DagView({ entries, getCaseById, getCategoryById }: {
-  entries: ReturnType<typeof useTimeEntries>["entries"];
-  getCaseById: (id: string) => ReturnType<typeof useCases>["cases"][0] | undefined;
-  getCategoryById: (id: string) => ReturnType<typeof useCategories>["categories"][0] | undefined;
-}) {
-  const router = useRouter();
-  const sorted = [...entries].sort((a, b) => {
-    const at = a.startTime ?? "00:00";
-    const bt = b.startTime ?? "00:00";
-    return at.localeCompare(bt);
-  });
-  const total = entries.reduce((s, e) => s + e.durationMinutes, 0);
-
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-      <div className="divide-y divide-slate-100">
-        {sorted.map((e) => {
-          const c = getCaseById(e.caseId);
-          const cat = c ? getCategoryById(c.categoryId) : undefined;
-          return (
-            <div key={e.id} onClick={() => router.push(`/cases/${e.caseId}`)} className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-slate-50 transition-colors">
-              <div className="w-24 shrink-0 text-center">
-                {e.startTime && e.endTime ? (
-                  <>
-                    <p className="text-sm font-bold text-slate-800">{e.startTime}</p>
-                    <p className="text-xs text-slate-400">{e.endTime}</p>
-                  </>
-                ) : (
-                  <p className="text-sm font-bold text-slate-600">{minutesToHours(e.durationMinutes)}</p>
-                )}
-              </div>
-              <div className="w-px h-10 bg-slate-200 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-slate-800 truncate">{c?.title ?? "Ukjent sak"}</span>
-                  <CategoryBadge category={cat} small />
-                </div>
-                {e.description && <p className="text-xs text-slate-400 truncate mt-0.5">{e.description}</p>}
-              </div>
-              {e.startTime && e.endTime && (
-                <span className="shrink-0 text-sm font-bold text-slate-600">{minutesToHours(e.durationMinutes)}</span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <div className="border-t border-slate-200 bg-slate-50 px-5 py-3 flex justify-between">
-        <span className="text-sm font-semibold text-slate-600">Totalt</span>
-        <span className="text-sm font-bold text-slate-900">{minutesToHours(total)}</span>
-      </div>
-    </div>
-  );
-}
-
-// ── Uke-visning ──────────────────────────────────────────
-function UkeView({ entries, start, end, getCaseById, getCategoryById }: {
-  entries: ReturnType<typeof useTimeEntries>["entries"];
-  start: Date; end: Date;
-  getCaseById: (id: string) => ReturnType<typeof useCases>["cases"][0] | undefined;
-  getCategoryById: (id: string) => ReturnType<typeof useCategories>["categories"][0] | undefined;
-}) {
-  const router = useRouter();
-  const days = eachDayOfInterval({ start, end });
-  const total = entries.reduce((s, e) => s + e.durationMinutes, 0);
-
-  return (
-    <div className="space-y-4">
-      {days.map((day) => {
-        const dayEntries = entries
-          .filter((e) => isSameDay(e.date, day))
-          .sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""));
-        if (dayEntries.length === 0) return null;
-        const dayTotal = dayEntries.reduce((s, e) => s + e.durationMinutes, 0);
-        return (
-          <div key={day.toISOString()}>
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                {format(day, "EEEE d. MMMM", { locale: nb })}
-              </h3>
-              <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
-                {minutesToHours(dayTotal)}
-              </span>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden divide-y divide-slate-100">
-              {dayEntries.map((e) => {
-                const c = getCaseById(e.caseId);
-                const cat = c ? getCategoryById(c.categoryId) : undefined;
-                return (
-                  <div key={e.id} onClick={() => router.push(`/cases/${e.caseId}`)} className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors">
-                    <div className="w-20 shrink-0 text-center">
-                      {e.startTime && e.endTime ? (
-                        <>
-                          <p className="text-sm font-bold text-slate-800">{e.startTime}</p>
-                          <p className="text-xs text-slate-400">{e.endTime}</p>
-                        </>
-                      ) : (
-                        <p className="text-sm font-bold text-slate-600">{minutesToHours(e.durationMinutes)}</p>
-                      )}
-                    </div>
-                    <div className="w-px h-9 bg-slate-200 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-slate-800 truncate">{c?.title ?? "Ukjent sak"}</span>
-                        <CategoryBadge category={cat} small />
-                      </div>
-                      {e.description && <p className="text-xs text-slate-400 truncate">{e.description}</p>}
-                    </div>
-                    {e.startTime && e.endTime && (
-                      <span className="shrink-0 text-sm font-semibold text-slate-600">{minutesToHours(e.durationMinutes)}</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-      <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-5 py-3 flex justify-between">
-        <span className="text-sm font-semibold text-indigo-700">Totalt for uken</span>
-        <span className="text-sm font-bold text-indigo-900">{minutesToHours(total)}</span>
-      </div>
-    </div>
-  );
-}
-
-// ── Måned-visning ─────────────────────────────────────────
-function MånedView({ entries, start, end, getCaseById, getCategoryById }: {
-  entries: ReturnType<typeof useTimeEntries>["entries"];
-  start: Date; end: Date;
-  getCaseById: (id: string) => ReturnType<typeof useCases>["cases"][0] | undefined;
-  getCategoryById: (id: string) => ReturnType<typeof useCategories>["categories"][0] | undefined;
-}) {
-  const router = useRouter();
-  const days = eachDayOfInterval({ start, end }).filter((day) =>
-    entries.some((e) => isSameDay(e.date, day))
-  );
-  const total = entries.reduce((s, e) => s + e.durationMinutes, 0);
-
-  // Sak-sammendrag
-  const byCase: Record<string, number> = {};
-  entries.forEach((e) => { byCase[e.caseId] = (byCase[e.caseId] ?? 0) + e.durationMinutes; });
-  const caseSummary = Object.entries(byCase)
-    .map(([id, min]) => ({ id, title: getCaseById(id)?.title ?? "Ukjent", min }))
-    .sort((a, b) => b.min - a.min);
-
-  return (
-    <div className="space-y-6">
-      {/* Dag-for-dag */}
-      <div className="space-y-2">
-        {days.map((day) => {
-          const dayEntries = entries
-            .filter((e) => isSameDay(e.date, day))
-            .sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""));
-          const dayTotal = dayEntries.reduce((s, e) => s + e.durationMinutes, 0);
-          return (
-            <div key={day.toISOString()} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-100">
-                <span className="text-xs font-semibold text-slate-500 capitalize">
-                  {format(day, "EEEE d. MMMM", { locale: nb })}
+              <div className="chart-caption">
+                <span>
+                  Registrert tid, fordelt på{" "}
+                  {period === "year" ? "måneder" : "dager"}.
                 </span>
-                <span className="text-xs font-bold text-slate-600">{minutesToHours(dayTotal)}</span>
+                <span>
+                  Totalt <strong>{duration(total)}</strong>
+                </span>
               </div>
-              <div className="divide-y divide-slate-100">
-                {dayEntries.map((e) => {
-                  const c = getCaseById(e.caseId);
-                  const cat = c ? getCategoryById(c.categoryId) : undefined;
-                  return (
-                    <div key={e.id} onClick={() => router.push(`/cases/${e.caseId}`)} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-slate-50 transition-colors">
-                      {e.startTime && e.endTime && (
-                        <span className="text-xs text-slate-400 shrink-0 w-24">{e.startTime} – {e.endTime}</span>
+            </Panel>
+            <Panel
+              title="Hvor går tiden?"
+              subtitle="Sakene med mest registrert tid"
+            >
+              {caseRows.length ? (
+                <div className="report-list">
+                  {caseRows.slice(0, 5).map(([id, minutes], i) => (
+                    <div className="report-rank-row" key={id}>
+                      <span className="rank-number">{i + 1}</span>
+                      {caseMap.has(id) ? (
+                        <Link href={`/cases/${id}`}>
+                          {caseMap.get(id)?.title}
+                        </Link>
+                      ) : (
+                        <span className="flex-1">Slettet sak</span>
                       )}
-                      <span className="text-sm font-medium text-slate-800 truncate flex-1">{c?.title ?? "Ukjent sak"}</span>
-                      <CategoryBadge category={cat} small />
-                      <span className="text-sm font-semibold text-slate-600 shrink-0">{minutesToHours(e.durationMinutes)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Oppsummering per sak */}
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
-          <p className="text-sm font-semibold text-slate-700">Oppsummering per sak</p>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {caseSummary.map((row) => (
-            <div key={row.id} onClick={() => router.push(`/cases/${row.id}`)} className="flex items-center justify-between px-5 py-3 cursor-pointer hover:bg-slate-50 transition-colors">
-              <span className="text-sm text-slate-700">{row.title}</span>
-              <span className="text-sm font-semibold text-slate-800">{minutesToHours(row.min)}</span>
-            </div>
-          ))}
-        </div>
-        <div className="px-5 py-3 border-t border-slate-200 bg-indigo-50 flex justify-between">
-          <span className="text-sm font-semibold text-indigo-700">Totalt for måneden</span>
-          <span className="text-sm font-bold text-indigo-900">{minutesToHours(total)}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── År-visning ────────────────────────────────────────────
-function ÅrView({ entries, start, end, getCaseById, getCategoryById }: {
-  entries: ReturnType<typeof useTimeEntries>["entries"];
-  start: Date; end: Date;
-  getCaseById: (id: string) => ReturnType<typeof useCases>["cases"][0] | undefined;
-  getCategoryById: (id: string) => ReturnType<typeof useCategories>["categories"][0] | undefined;
-}) {
-  const router = useRouter();
-  const months = eachMonthOfInterval({ start, end });
-  const total = entries.reduce((s, e) => s + e.durationMinutes, 0);
-
-  return (
-    <div className="space-y-3">
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden divide-y divide-slate-100">
-        {months.map((month) => {
-          const monthEntries = entries.filter((e) =>
-            isWithinInterval(e.date, { start: startOfMonth(month), end: endOfMonth(month) })
-          );
-          const monthTotal = monthEntries.reduce((s, e) => s + e.durationMinutes, 0);
-          if (monthTotal === 0) return null;
-
-          const caseMap: Record<string, number> = {};
-          monthEntries.forEach((e) => { caseMap[e.caseId] = (caseMap[e.caseId] ?? 0) + e.durationMinutes; });
-
-          return (
-            <div key={month.toISOString()} className="px-5 py-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold text-slate-800 capitalize">
-                  {format(month, "MMMM", { locale: nb })}
-                </h3>
-                <span className="text-sm font-bold text-slate-700">{minutesToHours(monthTotal)}</span>
-              </div>
-              <div className="space-y-1">
-                {Object.entries(caseMap)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([id, min]) => (
-                    <div key={id} onClick={() => router.push(`/cases/${id}`)} className="flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors rounded px-1 -mx-1">
-                      <span className="text-xs text-slate-500">{getCaseById(id)?.title ?? "Ukjent"}</span>
-                      <span className="text-xs font-medium text-slate-600">{minutesToHours(min)}</span>
+                      <strong>{duration(minutes)}</strong>
+                      <span>
+                        {total ? Math.round((minutes / total) * 100) : 0} %
+                      </span>
                     </div>
                   ))}
-              </div>
+                </div>
+              ) : (
+                <EmptyState
+                  compact
+                  title="Ingen timer i utvalget"
+                  description="Velg en annen periode eller registrer tid."
+                />
+              )}
+            </Panel>
+          </div>
+          <div className="case-tabs">
+            {(
+              [
+                { id: "cases", label: "Per sak" },
+                { id: "categories", label: "Per kategori" },
+                { id: "entries", label: "Timelogg" },
+              ] as const
+            ).map((v) => (
+              <button
+                className={cn("case-tab", view === v.id && "selected")}
+                key={v.id}
+                onClick={() => setView(v.id)}
+                aria-pressed={view === v.id}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+          {!filtered.length ? (
+            <EmptyState
+              title="Ingen registreringer i perioden"
+              description="Prøv en annen periode, eller nullstill filtrene for et større utvalg."
+              action={
+                <Link className="primary-button" href="/timer/new">
+                  Registrer tid
+                </Link>
+              }
+            />
+          ) : (
+            <div className="data-table-wrap">
+              <table className="data-table">
+                {view === "cases" ? (
+                  <>
+                    <thead>
+                      <tr>
+                        <th>Sak</th>
+                        <th>Kategori</th>
+                        <th className="numeric">Registreringer</th>
+                        <th className="numeric">Tid</th>
+                        <th className="numeric">Andel</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {caseRows.map(([id, minutes]) => (
+                        <tr key={id}>
+                          <td>
+                            {caseMap.has(id) ? (
+                              <Link href={`/cases/${id}`}>
+                                <strong>{caseMap.get(id)?.title}</strong>
+                                <small>{caseMap.get(id)?.laerested}</small>
+                              </Link>
+                            ) : (
+                              "Slettet sak"
+                            )}
+                          </td>
+                          <td>
+                            {categoryMap.get(caseMap.get(id)?.categoryId ?? "")
+                              ?.name ?? "Uten kategori"}
+                          </td>
+                          <td className="numeric">
+                            {filtered.filter((e) => e.caseId === id).length}
+                          </td>
+                          <td className="numeric">{duration(minutes)}</td>
+                          <td className="numeric">
+                            {Math.round((minutes / total) * 100)} %
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </>
+                ) : view === "categories" ? (
+                  <>
+                    <thead>
+                      <tr>
+                        <th>Kategori</th>
+                        <th className="numeric">Tid</th>
+                        <th className="numeric">Andel av arbeidstiden</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rankedCategories.map(([id, minutes]) => (
+                        <tr key={id}>
+                          <td>
+                            <strong>
+                              {categoryMap.get(id)?.name ?? "Uten kategori"}
+                            </strong>
+                          </td>
+                          <td className="numeric">{duration(minutes)}</td>
+                          <td className="numeric">
+                            {Math.round((minutes / total) * 100)} %
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </>
+                ) : (
+                  <>
+                    <thead>
+                      <tr>
+                        <th>Sak / beskrivelse</th>
+                        <th>Dato</th>
+                        <th>Tidsrom</th>
+                        <th className="numeric">Varighet</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((e) => (
+                        <tr key={e.id}>
+                          <td>
+                            <Link href={`/timer/${e.id}/edit`}>
+                              <strong>
+                                {caseMap.get(e.caseId)?.title || "Slettet sak"}
+                              </strong>
+                              <small>{e.description}</small>
+                            </Link>
+                          </td>
+                          <td>{format(e.date, "dd.MM.yyyy")}</td>
+                          <td>
+                            {e.startTime && e.endTime
+                              ? `${e.startTime}–${e.endTime}`
+                              : "—"}
+                          </td>
+                          <td className="numeric">
+                            {duration(e.durationMinutes)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </>
+                )}
+                <tfoot>
+                  <tr>
+                    <td
+                      colSpan={
+                        view === "cases" ? 3 : view === "categories" ? 1 : 3
+                      }
+                    >
+                      <strong>Totalt</strong>
+                    </td>
+                    <td className="numeric">
+                      <strong>{duration(total)}</strong>
+                    </td>
+                    {view !== "entries" && <td className="numeric">100 %</td>}
+                  </tr>
+                </tfoot>
+              </table>
             </div>
-          );
-        })}
-      </div>
-      <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-5 py-3 flex justify-between">
-        <span className="text-sm font-semibold text-indigo-700">Totalt for året</span>
-        <span className="text-sm font-bold text-indigo-900">{minutesToHours(total)}</span>
-      </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

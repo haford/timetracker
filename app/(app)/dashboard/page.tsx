@@ -1,369 +1,498 @@
 "use client";
 
-import { useMemo } from "react";
+import { useState } from "react";
 import Link from "next/link";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  CalendarClock,
+  CheckCheck,
+  Clock3,
+  FolderOpen,
+  Plus,
+  Wallet,
+} from "lucide-react";
+import { endOfDay, format, isToday } from "date-fns";
+import { nb } from "date-fns/locale";
 import { useAuth } from "@/hooks/useAuth";
 import { useCases } from "@/hooks/useCases";
 import { useTimeEntries } from "@/hooks/useTimeEntries";
 import { useCategories } from "@/hooks/useCategories";
 import { useBegrunnelser } from "@/hooks/useBegrunnelser";
-import { CategoryBadge } from "@/components/CategoryBadge";
+import { ActivityChart } from "@/components/ActivityChart";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  Metric,
+  PageHeading,
+  Panel,
+  TextLink,
+} from "@/components/workspace-ui";
 import { cn } from "@/lib/utils";
-import { STATUS_LABELS, STATUS_COLORS } from "@/lib/types";
-import { buttonVariants } from "@/components/ui/button";
 import {
-  Clock,
-  FolderOpen,
-  Plus,
-  TrendingUp,
-  CalendarDays,
-  ChevronRight,
-  CalendarClock,
-  AlertTriangle,
-  FileText,
-} from "lucide-react";
-import {
-  startOfDay,
-  startOfWeek,
-  startOfMonth,
-  isAfter,
-  differenceInDays,
-  isPast,
-  isToday,
-  format,
-} from "date-fns";
-import { nb } from "date-fns/locale";
-
-function minutesToHours(min: number): string {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  if (h === 0) return `${m}m`;
-  if (m === 0) return `${h}t`;
-  return `${h}t ${m}m`;
-}
-
-function deadlineLabel(daysLeft: number): string {
-  if (daysLeft < 0) return `${Math.abs(daysLeft)} dager over`;
-  if (daysLeft === 0) return "I dag!";
-  if (daysLeft === 1) return "I morgen";
-  return `${daysLeft} dager`;
-}
-
-function deadlineColors(daysLeft: number) {
-  if (daysLeft < 0)  return { bar: "bg-red-400",   badge: "bg-red-100 text-red-700",    row: "hover:bg-red-50" };
-  if (daysLeft <= 2) return { bar: "bg-red-400",   badge: "bg-red-100 text-red-700",    row: "hover:bg-red-50" };
-  if (daysLeft <= 7) return { bar: "bg-amber-400", badge: "bg-amber-100 text-amber-700", row: "hover:bg-amber-50" };
-  if (daysLeft <= 30)return { bar: "bg-blue-400",  badge: "bg-blue-100 text-blue-700",  row: "hover:bg-slate-50" };
-  return               { bar: "bg-slate-300",  badge: "bg-slate-100 text-slate-500",  row: "hover:bg-slate-50" };
-}
+  deadlineText,
+  deadlines,
+  duration,
+  inRange,
+  isOpenCase,
+  minutesByCase,
+  nok,
+  periodRange,
+  periodSummary,
+} from "@/lib/insights";
+import { STATUS_LABELS } from "@/lib/types";
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const { cases } = useCases(user?.uid);
-  const { entries } = useTimeEntries(user?.uid);
+  const {
+    cases,
+    loading: casesLoading,
+    error: casesError,
+  } = useCases(user?.uid);
+  const {
+    entries,
+    loading: entriesLoading,
+    error: entriesError,
+  } = useTimeEntries(user?.uid);
   const { categories } = useCategories(user?.uid);
-  const { begrunnelser } = useBegrunnelser(user?.uid);
-
+  const {
+    begrunnelser,
+    loading: reasonsLoading,
+    error: reasonsError,
+  } = useBegrunnelser(user?.uid);
+  const [period, setPeriod] = useState<"week" | "month">("week");
   const now = new Date();
-  const todayStart = startOfDay(now);
-  const weekStart = startOfWeek(now, { weekStartsOn: 1 });
-  const monthStart = startOfMonth(now);
-
-  const stats = useMemo(() => {
-    const today = entries
-      .filter((e) => isAfter(e.date, todayStart))
-      .reduce((sum, e) => sum + e.durationMinutes, 0);
-    const week = entries
-      .filter((e) => isAfter(e.date, weekStart))
-      .reduce((sum, e) => sum + e.durationMinutes, 0);
-    const month = entries
-      .filter((e) => isAfter(e.date, monthStart))
-      .reduce((sum, e) => sum + e.durationMinutes, 0);
-    return { today, week, month };
-  }, [entries, todayStart, weekStart, monthStart]);
-
-  const upcomingDeadlines = useMemo(() => {
-    return cases
-      .filter((c) => c.deadline && c.status !== "avsluttet")
-      .map((c) => ({ ...c, daysLeft: differenceInDays(c.deadline!, todayStart) }))
-      .sort((a, b) => a.daysLeft - b.daysLeft)
-      .slice(0, 10);
-  }, [cases, todayStart]);
-
-  const activeCases = cases.filter((c) => c.status === "påbegynt");
-  const recentEntries = entries.slice(0, 5);
-
-  const getCategoryById = (id: string) => categories.find((c) => c.id === id);
-  const getCaseById = (id: string) => cases.find((c) => c.id === id);
-
-  const overdueCount = upcomingDeadlines.filter((c) => c.daysLeft < 0).length;
-
-  const urgentBegrunnelser = useMemo(() => {
-    return begrunnelser
-      .filter((b) => b.status !== "sendt")
-      .map((b) => ({ ...b, daysLeft: differenceInDays(b.fristForBegrunnelse, todayStart) }))
-      .filter((b) => b.daysLeft <= 7)
-      .sort((a, b) => a.daysLeft - b.daysLeft);
-  }, [begrunnelser, todayStart]);
+  const todayKey = format(now, "yyyy-MM-dd");
+  const insight = (() => {
+    const today = new Date(todayKey + "T12:00:00");
+    const range = periodRange(today, period);
+    return {
+      ...periodSummary(entries, today, period),
+      range,
+      deadlines: deadlines(cases, begrunnelser, today),
+      minutes: minutesByCase(entries),
+    };
+  })();
+  const active = cases
+    .filter(isOpenCase)
+    .sort(
+      (a, b) =>
+        (a.deadline?.getTime() ?? Infinity) -
+        (b.deadline?.getTime() ?? Infinity),
+    );
+  const urgent = insight.deadlines.filter((d) => d.days <= 7);
+  const overdue = urgent.filter((d) => d.days < 0).length;
+  const pendingPayment = cases.filter(
+    (c) => c.isPaid && c.honorarClaimSent && !c.honorarPaid,
+  );
+  const unclaimed = cases.filter(
+    (c) => c.isPaid && !c.honorarClaimSent && !c.honorarPaid,
+  );
+  const caseMap = new Map(cases.map((c) => [c.id, c]));
+  const categoryMap = new Map(categories.map((c) => [c.id, c]));
+  const distribution = categories
+    .map((c) => ({
+      ...c,
+      minutes: insight.entries
+        .filter((e) => caseMap.get(e.caseId)?.categoryId === c.id)
+        .reduce((n, e) => n + e.durationMinutes, 0),
+    }))
+    .filter((c) => c.minutes > 0)
+    .sort((a, b) => b.minutes - a.minutes);
+  const uncategorized =
+    insight.total - distribution.reduce((n, c) => n + c.minutes, 0);
+  if (uncategorized > 0)
+    distribution.push({
+      id: "other",
+      name: "Uten kategori",
+      color: "#94a3b8",
+      minutes: uncategorized,
+    });
+  const recent = [...entries]
+    .sort(
+      (a, b) =>
+        b.date.getTime() - a.date.getTime() ||
+        b.createdAt.getTime() - a.createdAt.getTime(),
+    )
+    .slice(0, 5);
+  const todayTotal = entries
+    .filter((e) => isToday(e.date))
+    .reduce((n, e) => n + e.durationMinutes, 0);
+  const loading = casesLoading || entriesLoading || reasonsLoading;
+  const error = casesError || entriesError || reasonsError;
+  const difference = insight.total - insight.previous;
+  const meetings = cases
+    .filter(isOpenCase)
+    .flatMap((c) =>
+      (c.moter ?? [])
+        .filter((m) => isToday(m.dato))
+        .map((m) => ({ ...m, caseId: c.id, caseTitle: c.title })),
+    )
+    .sort((a, b) => (a.tid ?? "99").localeCompare(b.tid ?? "99"));
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="mb-6 flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">
-            {format(now, "EEEE d. MMMM yyyy", { locale: nb })}
-          </p>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
-        </div>
-        <Link
-          href="/timer/new"
-          className={cn(buttonVariants({ variant: "default" }), "gap-1.5")}
-        >
-          <Plus className="h-4 w-4" />
-          Registrer timer
-        </Link>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="rounded-xl bg-indigo-50 border border-indigo-100 px-4 py-3.5 flex items-center gap-3">
-          <div className="rounded-lg bg-indigo-100 p-2 shrink-0">
-            <Clock className="h-4 w-4 text-indigo-600" />
-          </div>
-          <div>
-            <p className="text-xs font-medium text-indigo-500 mb-0.5">I dag</p>
-            <p className="text-2xl font-bold text-indigo-900 leading-none">{minutesToHours(stats.today)}</p>
-          </div>
-        </div>
-        <div className="rounded-xl bg-violet-50 border border-violet-100 px-4 py-3.5 flex items-center gap-3">
-          <div className="rounded-lg bg-violet-100 p-2 shrink-0">
-            <TrendingUp className="h-4 w-4 text-violet-600" />
-          </div>
-          <div>
-            <p className="text-xs font-medium text-violet-500 mb-0.5">Denne uken</p>
-            <p className="text-2xl font-bold text-violet-900 leading-none">{minutesToHours(stats.week)}</p>
-          </div>
-        </div>
-        <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-3.5 flex items-center gap-3">
-          <div className="rounded-lg bg-emerald-100 p-2 shrink-0">
-            <CalendarDays className="h-4 w-4 text-emerald-600" />
-          </div>
-          <div>
-            <p className="text-xs font-medium text-emerald-600 mb-0.5">Denne måneden</p>
-            <p className="text-2xl font-bold text-emerald-900 leading-none">{minutesToHours(stats.month)}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Kommende frister */}
-      {upcomingDeadlines.length > 0 && (
-        <div className="mb-6 rounded-2xl border border-slate-200 bg-white overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <CalendarClock className="h-4 w-4 text-slate-400" />
-              <span className="text-sm font-semibold text-slate-700">Kommende frister</span>
-              {overdueCount > 0 && (
-                <span className="text-xs font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
-                  {overdueCount} over frist
-                </span>
-              )}
+    <div className="workspace-page dashboard-page">
+      <PageHeading
+        eyebrow={format(now, "EEEE d. MMMM yyyy", { locale: nb })}
+        title={`God oversikt, ${user?.displayName?.split(" ")[0] || "god arbeidsdag"}.`}
+        description="Tiden din, oppdragene dine og det neste som skal gjøres."
+        actions={
+          <Link href="/timer/new" className="primary-button">
+            <Plus size={17} />
+            Registrer tid
+          </Link>
+        }
+      />
+      {error ? (
+        <ErrorState message={error} />
+      ) : loading ? (
+        <LoadingState />
+      ) : (
+        <>
+          <div className="overview-toolbar">
+            <div className="section-kicker">
+              <span className="live-dot" />
+              Arbeidsuken i korte trekk
             </div>
-            <Link
-              href="/cases"
-              className="flex items-center gap-0.5 text-xs font-medium text-indigo-600 hover:text-indigo-700"
-            >
-              Se alle saker <ChevronRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-          <div className="divide-y divide-slate-50">
-            {upcomingDeadlines.map((c) => {
-              const col = deadlineColors(c.daysLeft);
-              return (
-                <Link
-                  key={c.id}
-                  href={`/cases/${c.id}`}
-                  className={cn("flex items-center gap-4 px-5 py-3 transition-colors", col.row)}
+            <div className="segmented-control" aria-label="Statistikkperiode">
+              {(["week", "month"] as const).map((p) => (
+                <button
+                  key={p}
+                  aria-pressed={period === p}
+                  className={cn(period === p && "selected")}
+                  onClick={() => setPeriod(p)}
                 >
-                  {/* Urgency bar */}
-                  <div className={cn("w-1 h-9 rounded-full shrink-0", col.bar)} />
-
-                  {/* Case info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-800 truncate">{c.title}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <CategoryBadge category={getCategoryById(c.categoryId)} small />
-                      <span className="text-xs text-slate-400">
-                        {format(c.deadline!, "d. MMMM yyyy", { locale: nb })}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Days badge */}
-                  <span className={cn("shrink-0 text-xs font-bold px-2.5 py-1 rounded-full whitespace-nowrap", col.badge)}>
-                    {deadlineLabel(c.daysLeft)}
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Begrunnelser med nær frist */}
-      {urgentBegrunnelser.length > 0 && (
-        <div className="mb-6 rounded-2xl border border-orange-200 bg-orange-50 overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-orange-100">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-orange-500" />
-              <span className="text-sm font-semibold text-orange-800">Begrunnelsesfrister</span>
-              <span className="text-xs font-bold bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">
-                {urgentBegrunnelser.length}
-              </span>
+                  {p === "week" ? "Denne uken" : "Denne måneden"}
+                </button>
+              ))}
             </div>
-            <Link
-              href="/begrunnelser"
-              className="flex items-center gap-0.5 text-xs font-medium text-orange-700 hover:text-orange-900"
-            >
-              Se alle <ChevronRight className="h-3.5 w-3.5" />
-            </Link>
           </div>
-          <div className="divide-y divide-orange-100">
-            {urgentBegrunnelser.map((b) => {
-              const overdue = b.daysLeft < 0;
-              const today = b.daysLeft === 0;
-              return (
-                <Link
-                  key={b.id}
-                  href={`/cases/${b.caseId}`}
-                  className="flex items-center gap-4 px-5 py-3 hover:bg-orange-100/60 transition-colors"
-                >
-                  <div className={cn("w-1 h-9 rounded-full shrink-0", overdue ? "bg-red-500" : today ? "bg-amber-400" : "bg-orange-300")} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-800 truncate">{b.navn} <span className="text-slate-400 font-normal text-xs">#{b.kandidatnummer}</span></p>
-                    <p className="text-xs text-slate-500 truncate">{cases.find(c => c.id === b.caseId)?.title ?? b.caseId}</p>
-                  </div>
-                  <span className={cn(
-                    "shrink-0 text-xs font-bold px-2.5 py-1 rounded-full whitespace-nowrap",
-                    overdue ? "bg-red-100 text-red-700" : today ? "bg-amber-100 text-amber-700" : "bg-orange-100 text-orange-700"
-                  )}>
-                    {overdue ? `${Math.abs(b.daysLeft)}d over` : today ? "I dag!" : `${b.daysLeft}d`}
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Active cases + Recent entries */}
-      <div className="grid grid-cols-2 gap-6">
-        {/* Active Cases */}
-        <div className="rounded-2xl border border-slate-200 bg-white">
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <FolderOpen className="h-4 w-4 text-slate-400" />
-              <span className="text-sm font-semibold text-slate-700">Aktive saker</span>
-              {activeCases.length > 0 && (
-                <span className="text-xs font-semibold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">
-                  {activeCases.length}
-                </span>
-              )}
-            </div>
-            <Link
+          <div className="metric-grid">
+            <Metric
+              label={
+                period === "week"
+                  ? "Registrert denne uken"
+                  : "Registrert denne måneden"
+              }
+              value={duration(insight.total)}
+              tone="brand"
+              icon={<Clock3 size={18} />}
+              detail={
+                insight.previous
+                  ? `${difference >= 0 ? "+" : "−"}${duration(Math.abs(difference))} mot samme del av forrige ${period === "week" ? "uke" : "måned"}`
+                  : `${duration(todayTotal)} registrert i dag`
+              }
+              href="/reports"
+            />
+            <Metric
+              label="Åpne saker"
+              value={active.length}
+              icon={<FolderOpen size={18} />}
+              detail={`${cases.filter((c) => c.status === "påbegynt").length} påbegynt · ${cases.filter((c) => c.status === "begrunnelser").length} med begrunnelser`}
               href="/cases"
-              className="flex items-center gap-0.5 text-xs font-medium text-indigo-600 hover:text-indigo-700"
-            >
-              Se alle <ChevronRight className="h-3.5 w-3.5" />
-            </Link>
+            />
+            <Metric
+              label="Frister neste 7 dager"
+              value={urgent.filter((d) => d.days >= 0).length}
+              icon={<CalendarClock size={18} />}
+              detail={
+                overdue
+                  ? `${overdue} frister er passert`
+                  : "Saker, delfrister og begrunnelser"
+              }
+              tone={overdue ? "amber" : undefined}
+              href="/kalender"
+            />
+            <Metric
+              label="Venter på utbetaling"
+              value={nok(
+                pendingPayment.reduce((n, c) => n + (c.honorar ?? 0), 0),
+              )}
+              icon={<Wallet size={18} />}
+              detail={`${pendingPayment.length} innsendte krav · brutto honorar`}
+              href="/okonomi"
+            />
           </div>
-          <div className="p-3">
-            {activeCases.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-6">Ingen aktive saker</p>
-            ) : (
-              <div className="space-y-0.5">
-                {activeCases.slice(0, 6).map((c) => (
-                  <Link
-                    key={c.id}
-                    href={`/cases/${c.id}`}
-                    className="flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-slate-50 transition-colors group"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-slate-800 truncate">{c.title}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <CategoryBadge category={getCategoryById(c.categoryId)} small />
-                        {c.deadline && (
-                          <span className="text-xs text-slate-400">
-                            · frist {format(c.deadline, "d. MMM", { locale: nb })}
-                          </span>
+          <div className="dashboard-primary-grid">
+            <Panel
+              title="Slik fordeler tiden seg"
+              subtitle={`${format(insight.range.start, "d. MMM", { locale: nb })} – ${format(insight.range.end, "d. MMM yyyy", { locale: nb })}`}
+              action={<TextLink href="/reports">Åpne rapport</TextLink>}
+              className="activity-panel"
+            >
+              <div className="activity-summary">
+                <strong>{duration(insight.total)}</strong>
+                <span>
+                  på {insight.activeDays}{" "}
+                  {insight.activeDays === 1 ? "arbeidsdag" : "arbeidsdager"}
+                </span>
+                <span className="chart-legend">
+                  <i />
+                  Registrert tid
+                </span>
+              </div>
+              <ActivityChart
+                entries={entries.filter((e) =>
+                  inRange(e.date, insight.range.start, endOfDay(now)),
+                )}
+                start={insight.range.start}
+                end={insight.range.end}
+                period={period}
+              />
+              <div className="chart-caption">
+                <span>Klikk på en dag for å se registreringene.</span>
+                <span>
+                  Snitt per aktiv dag{" "}
+                  <strong>
+                    {duration(
+                      insight.activeDays
+                        ? insight.total / insight.activeDays
+                        : 0,
+                    )}
+                  </strong>
+                </span>
+              </div>
+            </Panel>
+            <Panel
+              title="Først på listen"
+              subtitle="Fristene som fortjener oppmerksomhet"
+              action={
+                <span className="count-badge">{insight.deadlines.length}</span>
+              }
+              className="priorities-panel"
+            >
+              {!insight.deadlines.length ? (
+                <EmptyState
+                  compact
+                  title="Ingen utestående frister"
+                  description="Nye frister vises her når du legger dem til på en sak."
+                />
+              ) : (
+                <div className="priority-list">
+                  {insight.deadlines.slice(0, 5).map((d) => (
+                    <Link href={d.href} key={d.id} className="priority-row">
+                      <div
+                        className={cn(
+                          "deadline-date",
+                          d.days < 0 ? "overdue" : d.days <= 2 ? "soon" : "",
                         )}
+                      >
+                        <strong>{format(d.date, "d")}</strong>
+                        <small>{format(d.date, "MMM", { locale: nb })}</small>
                       </div>
+                      <div className="priority-copy">
+                        <strong>{d.title}</strong>
+                        <small>{d.subtitle}</small>
+                        <span
+                          className={cn(
+                            "deadline-label",
+                            d.days < 0 && "text-danger",
+                          )}
+                        >
+                          {d.kind === "begrunnelse" ? "Begrunnelse · " : ""}
+                          {deadlineText(d.days)}
+                        </span>
+                      </div>
+                      <ArrowUpRight size={15} />
+                    </Link>
+                  ))}
+                </div>
+              )}
+              <div className="panel-bottom">
+                <TextLink href="/kalender">Se hele kalenderen</TextLink>
+              </div>
+            </Panel>
+          </div>
+          {meetings.length > 0 && (
+            <div className="today-meetings">
+              <CalendarClock size={19} />
+              <strong>Møter i dag</strong>
+              {meetings.map((m, i) => (
+                <Link key={i} href={`/cases/${m.caseId}`}>
+                  <span>{m.tid || "Hele dagen"}</span>
+                  {m.tittel}
+                  <ArrowUpRight size={13} />
+                </Link>
+              ))}
+            </div>
+          )}
+          <div className="dashboard-secondary-grid">
+            <Panel
+              title="Saker i arbeid"
+              subtitle="Status, fremdrift og registrert tid"
+              action={<TextLink href="/cases">Alle saker</TextLink>}
+            >
+              {!active.length ? (
+                <EmptyState
+                  title="Plass til et nytt oppdrag"
+                  description="Opprett en sak for å samle timer, frister og dokumenter."
+                  action={
+                    <Link href="/cases/new" className="secondary-button">
+                      <Plus size={15} />
+                      Ny sak
+                    </Link>
+                  }
+                />
+              ) : (
+                <div className="work-case-list">
+                  {active.slice(0, 5).map((c) => {
+                    const graded =
+                      c.gradeProgress?.reduce(
+                        (n, p) => n + p.antallRettet,
+                        0,
+                      ) ?? 0;
+                    const total = c.honorarAntallBesvarelser ?? 0;
+                    const cat = categoryMap.get(c.categoryId);
+                    return (
+                      <div className="work-case-row" key={c.id}>
+                        <Link
+                          href={`/cases/${c.id}`}
+                          className="work-case-main"
+                        >
+                          <span
+                            className="case-symbol"
+                            style={{ color: cat?.color || "#227561" }}
+                          >
+                            <FolderOpen size={18} />
+                          </span>
+                          <span>
+                            <strong>{c.title}</strong>
+                            <small>
+                              {c.laerested || cat?.name || "Oppdrag"}{" "}
+                              <span>·</span> {STATUS_LABELS[c.status]}
+                            </small>
+                          </span>
+                        </Link>
+                        {total > 0 && (
+                          <div className="grading-progress">
+                            <span>
+                              {graded} / {total} rettet
+                            </span>
+                            <div>
+                              <i
+                                style={{
+                                  width: `${Math.min(100, Math.max(0, (graded / total) * 100))}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                        <span className="case-time">
+                          {duration(insight.minutes.get(c.id) ?? 0)}
+                        </span>
+                        <Link
+                          className="icon-button"
+                          href={`/timer/new?caseId=${c.id}`}
+                          aria-label={`Registrer tid på ${c.title}`}
+                          title="Registrer tid"
+                        >
+                          <Plus size={17} />
+                        </Link>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Panel>
+            <Panel
+              title="Tid per kategori"
+              subtitle={period === "week" ? "Denne uken" : "Denne måneden"}
+              action={<TextLink href="/reports">Detaljer</TextLink>}
+            >
+              {!distribution.length ? (
+                <EmptyState
+                  compact
+                  title="Ingen tid i perioden"
+                  description="Fordelingen vises når du registrerer tid."
+                />
+              ) : (
+                <div className="category-distribution">
+                  {distribution.map((c) => (
+                    <div key={c.id}>
+                      <div className="distribution-label">
+                        <span>
+                          <i style={{ background: c.color }} />
+                          {c.name}
+                        </span>
+                        <strong>{duration(c.minutes)}</strong>
+                      </div>
+                      <div className="distribution-track">
+                        <i
+                          style={{
+                            width: `${(c.minutes / insight.total) * 100}%`,
+                            background: c.color,
+                          }}
+                        />
+                      </div>
+                      <small>
+                        {Math.round((c.minutes / insight.total) * 100)} % av
+                        tiden
+                      </small>
                     </div>
-                    <span
-                      className={cn(
-                        "ml-2 shrink-0 text-xs font-medium px-2 py-0.5 rounded-full",
-                        STATUS_COLORS[c.status]
-                      )}
-                    >
-                      {STATUS_LABELS[c.status]}
+                  ))}
+                </div>
+              )}
+              {unclaimed.length > 0 && (
+                <Link className="money-reminder" href="/okonomi">
+                  <Wallet size={17} />
+                  <span>
+                    {unclaimed.length} oppdrag uten innsendt krav
+                    <small>
+                      {nok(unclaimed.reduce((n, c) => n + (c.honorar ?? 0), 0))}{" "}
+                      i registrert brutto honorar
+                    </small>
+                  </span>
+                  <ArrowRight size={15} />
+                </Link>
+              )}
+            </Panel>
+          </div>
+          <Panel
+            title="Siste registreringer"
+            subtitle="Fortsett der du slapp"
+            action={<TextLink href="/timer">Åpne timeloggen</TextLink>}
+          >
+            {recent.length ? (
+              <div className="recent-list">
+                {recent.map((e) => (
+                  <div className="recent-row" key={e.id}>
+                    <span className="entry-check">
+                      <CheckCheck size={18} />
                     </span>
-                  </Link>
+                    <Link href={`/timer/${e.id}/edit`} className="recent-main">
+                      <strong>
+                        {caseMap.get(e.caseId)?.title || "Slettet sak"}
+                      </strong>
+                      <small>{e.description || "Ingen beskrivelse"}</small>
+                    </Link>
+                    <span className="recent-date">
+                      {format(e.date, "d. MMM", { locale: nb })}
+                    </span>
+                    <strong className="recent-duration">
+                      {duration(e.durationMinutes)}
+                    </strong>
+                    <Link
+                      href={`/timer/new?caseId=${e.caseId}`}
+                      className="repeat-link"
+                      title="Registrer mer tid på samme sak"
+                    >
+                      <Plus size={15} />
+                      <span>Før mer tid</span>
+                    </Link>
+                  </div>
                 ))}
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Recent Entries */}
-        <div className="rounded-2xl border border-slate-200 bg-white">
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-slate-400" />
-              <span className="text-sm font-semibold text-slate-700">Siste timer</span>
-            </div>
-            <Link
-              href="/timer"
-              className="flex items-center gap-0.5 text-xs font-medium text-indigo-600 hover:text-indigo-700"
-            >
-              Se alle <ChevronRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-          <div className="p-3">
-            {recentEntries.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-6">Ingen timer registrert ennå</p>
             ) : (
-              <div className="space-y-0.5">
-                {recentEntries.map((e) => {
-                  const c = getCaseById(e.caseId);
-                  return (
-                    <Link
-                      key={e.id}
-                      href={`/cases/${e.caseId}`}
-                      className="flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-slate-50 transition-colors"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-slate-800 truncate">
-                          {c?.title ?? "Ukjent sak"}
-                        </p>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          {e.startTime && e.endTime
-                            ? `${e.startTime} – ${e.endTime} · `
-                            : ""}
-                          {format(e.date, "d. MMM", { locale: nb })}
-                          {e.description ? ` · ${e.description}` : ""}
-                        </p>
-                      </div>
-                      <span className="ml-2 shrink-0 text-sm font-bold text-slate-700">
-                        {minutesToHours(e.durationMinutes)}
-                      </span>
-                    </Link>
-                  );
-                })}
-              </div>
+              <EmptyState
+                compact
+                title="Din første time starter her"
+                description="Registrer tid på en sak for å bygge opp oversikten."
+              />
             )}
-          </div>
-        </div>
-      </div>
+          </Panel>
+        </>
+      )}
     </div>
   );
 }

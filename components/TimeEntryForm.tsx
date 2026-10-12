@@ -1,331 +1,432 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { addTimeEntry, updateTimeEntry } from "@/lib/firestore";
-import type { Case, TimeEntry } from "@/lib/types";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, ArrowRight, Clock, ChevronDown, Search, Check } from "lucide-react";
-import { format } from "date-fns";
-import { nb } from "date-fns/locale";
-import { cn } from "@/lib/utils";
+import Link from "next/link";
+import { addDays, format, isValid, parseISO, startOfDay } from "date-fns";
+import { Check, ChevronDown, Clock3, Search } from "lucide-react";
 import { toast } from "sonner";
+import { addTimeEntry, updateTimeEntry } from "@/lib/firestore";
+import { duration, matchesSearch } from "@/lib/insights";
+import type { Case, TimeEntry } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
-function roundToQuarter(date: Date): string {
-  const h = date.getHours();
-  const m = Math.round(date.getMinutes() / 15) * 15;
-  const mm = m === 60 ? 0 : m;
-  const hh = m === 60 ? h + 1 : h;
-  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-}
-
-function timeToMinutes(t: string): number {
-  const [h, m] = t.split(":").map(Number);
+function timeMinutes(value: string) {
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return NaN;
+  const [h, m] = value.split(":").map(Number);
   return h * 60 + m;
 }
-
-function minutesToTime(min: number): string {
-  const clamped = Math.max(0, min);
-  const h = Math.floor(clamped / 60) % 24;
-  const m = clamped % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+function timeString(minutes: number) {
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 }
 
-function minutesToDisplay(min: number): string {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  if (h === 0) return `${m} min`;
-  if (m === 0) return `${h}t`;
-  return `${h}t ${m}m`;
-}
-
-const schema = z
-  .object({
-    caseId: z.string().min(1, "Sak er påkrevd"),
-    startTime: z.string().regex(/^\d{2}:\d{2}$/, "Ugyldig tid"),
-    endTime: z.string().regex(/^\d{2}:\d{2}$/, "Ugyldig tid"),
-    description: z.string(),
-  })
-  .refine(
-    (d) => timeToMinutes(d.endTime) > timeToMinutes(d.startTime),
-    { message: "Sluttid må være etter starttid", path: ["endTime"] }
-  );
-
-type FormData = z.infer<typeof schema>;
-
-interface TimeEntryFormProps {
+export function TimeEntryForm({
+  userId,
+  cases,
+  initialCaseId,
+  editEntry,
+}: {
   userId: string;
   cases: Case[];
   initialCaseId?: string;
   editEntry?: TimeEntry;
-}
-
-export function TimeEntryForm({ userId, cases, initialCaseId, editEntry }: TimeEntryFormProps) {
+}) {
   const router = useRouter();
-  const [date, setDate] = useState<Date>(editEntry?.date ?? new Date());
-  const [saving, setSaving] = useState(false);
-
-  const now = new Date();
-  const defaultEnd = editEntry?.endTime ?? roundToQuarter(now);
-  const defaultStart = editEntry?.startTime ?? (() => {
-    const mins = timeToMinutes(defaultEnd) - 60;
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return `${String(Math.max(0, h)).padStart(2, "0")}:${String(Math.max(0, m)).padStart(2, "0")}`;
-  })();
-
-  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      caseId: editEntry?.caseId ?? initialCaseId ?? "",
-      startTime: defaultStart,
-      endTime: defaultEnd,
-      description: editEntry?.description ?? "",
-    },
+  const [caseId, setCaseId] = useState(
+    editEntry?.caseId ?? initialCaseId ?? "",
+  );
+  const [date, setDate] = useState(
+    format(editEntry?.date ?? new Date(), "yyyy-MM-dd"),
+  );
+  const [mode, setMode] = useState<"interval" | "duration">(
+    editEntry && (!editEntry.startTime || !editEntry.endTime)
+      ? "duration"
+      : "interval",
+  );
+  const [initialEnd] = useState(() => {
+    const now = new Date();
+    return Math.max(
+      15,
+      Math.min(
+        23 * 60 + 59,
+        Math.round((now.getHours() * 60 + now.getMinutes()) / 15) * 15,
+      ),
+    );
   });
-
-  const caseId = watch("caseId");
-  const startTime = watch("startTime");
-  const endTime = watch("endTime");
-
+  const [startTime, setStartTime] = useState(
+    editEntry?.startTime ?? timeString(Math.max(0, initialEnd - 60)),
+  );
+  const [endTime, setEndTime] = useState(
+    editEntry?.endTime ?? timeString(initialEnd),
+  );
+  const [durationValue, setDurationValue] = useState(
+    String(editEntry?.durationMinutes ?? 60),
+  );
+  const [description, setDescription] = useState(editEntry?.description ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const [caseOpen, setCaseOpen] = useState(false);
   const [caseQuery, setCaseQuery] = useState("");
-
-  const filteredCases = useMemo(() => {
-    if (!caseQuery.trim()) return cases;
-    const q = caseQuery.toLowerCase();
-    return cases.filter(
-      (c) =>
-        c.title.toLowerCase().includes(q) ||
-        (c.description || "").toLowerCase().includes(q)
-    );
-  }, [cases, caseQuery]);
-
+  const [saveAndContinue, setSaveAndContinue] = useState(false);
   const selectedCase = cases.find((c) => c.id === caseId);
-
-  const durationMin =
-    startTime && endTime && timeToMinutes(endTime) > timeToMinutes(startTime)
-      ? timeToMinutes(endTime) - timeToMinutes(startTime)
-      : null;
-
-  const onSubmit = async (data: FormData) => {
+  const filteredCases = useMemo(
+    () =>
+      cases
+        .filter((c) =>
+          matchesSearch(caseQuery, c.title, c.laerested, c.description),
+        )
+        .sort(
+          (a, b) =>
+            Number(a.status === "avsluttet") -
+              Number(b.status === "avsluttet") ||
+            b.updatedAt.getTime() - a.updatedAt.getTime(),
+        ),
+    [cases, caseQuery],
+  );
+  const minutes =
+    mode === "duration"
+      ? Number(durationValue)
+      : timeMinutes(endTime) - timeMinutes(startTime);
+  const validDuration =
+    Number.isFinite(minutes) &&
+    minutes > 0 &&
+    minutes <= 1440 &&
+    Number.isInteger(minutes);
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (saving) return;
+    if (!caseId) {
+      setError("Velg en sak før du lagrer.");
+      return;
+    }
+    if (!selectedCase && caseId !== editEntry?.caseId) {
+      setError("Saken finnes ikke lenger. Velg en annen sak.");
+      return;
+    }
+    const parsedDate = parseISO(date);
+    if (!isValid(parsedDate)) {
+      setError("Velg en gyldig dato.");
+      return;
+    }
+    if (!validDuration) {
+      setError(
+        mode === "interval"
+          ? "Sluttiden må være etter starttiden. Før arbeid over midnatt som to registreringer, eller bruk varighet."
+          : "Oppgi en varighet på 1–1440 hele minutter.",
+      );
+      return;
+    }
+    setError("");
     setSaving(true);
-    const durationMinutes = timeToMinutes(data.endTime) - timeToMinutes(data.startTime);
+    const data = {
+      caseId,
+      date: startOfDay(parsedDate),
+      durationMinutes: minutes,
+      description: description.trim(),
+      startTime: mode === "interval" ? startTime : "",
+      endTime: mode === "interval" ? endTime : "",
+    };
     try {
-      if (editEntry) {
-        await updateTimeEntry(userId, editEntry.id, {
-          caseId: data.caseId,
-          date,
-          startTime: data.startTime,
-          endTime: data.endTime,
-          durationMinutes,
-          description: data.description,
-        });
-        toast.success("Timer oppdatert");
-      } else {
-        await addTimeEntry(userId, {
-          caseId: data.caseId,
-          date,
-          startTime: data.startTime,
-          endTime: data.endTime,
-          durationMinutes,
-          description: data.description,
-        });
-        toast.success("Timer registrert");
-      }
-      router.back();
+      if (editEntry) await updateTimeEntry(userId, editEntry.id, data);
+      else await addTimeEntry(userId, data);
+      toast.success(
+        editEntry
+          ? "Timeregistreringen er oppdatert"
+          : `${duration(minutes)} registrert`,
+      );
+      if (!editEntry && saveAndContinue) {
+        setDescription("");
+        if (mode === "interval" && timeMinutes(endTime) <= 22 * 60 + 59) {
+          setStartTime(endTime);
+          setEndTime(timeString(timeMinutes(endTime) + 60));
+        }
+      } else router.push("/timer");
     } catch {
-      toast.error("Noe gikk galt");
+      setError(
+        "Registreringen kunne ikke lagres. Teksten er beholdt – prøv igjen.",
+      );
     } finally {
       setSaving(false);
     }
-  };
-
+  }
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 max-w-lg">
-      {/* Sak */}
-      <div className="space-y-2">
-        <Label className="text-sm font-medium text-slate-700">Sak *</Label>
-        <Popover
-          open={caseOpen}
-          onOpenChange={(o) => {
-            setCaseOpen(o);
-            if (!o) setCaseQuery("");
-          }}
-        >
-          <PopoverTrigger
-            className={cn(
-              buttonVariants({ variant: "outline" }),
-              "w-full h-11 justify-between text-left font-normal",
-              !caseId && "text-muted-foreground"
-            )}
+    <div className="time-form-panel">
+      <form onSubmit={submit} className="space-y-6">
+        <div className="space-y-2">
+          <Label htmlFor="time-case">Sak</Label>
+          <Popover
+            open={caseOpen}
+            onOpenChange={(open) => {
+              setCaseOpen(open);
+              if (!open) setCaseQuery("");
+            }}
           >
-            <span className="truncate">
-              {selectedCase ? selectedCase.title : "Velg sak"}
-            </span>
-            <ChevronDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
-          </PopoverTrigger>
-          <PopoverContent
-            className="w-(--anchor-width) min-w-72 p-0 overflow-hidden"
-            align="start"
-          >
-            {/* Søkefelt */}
-            <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2.5">
-              <Search className="h-4 w-4 text-slate-400 shrink-0" />
-              <input
-                type="text"
-                value={caseQuery}
-                onChange={(e) => setCaseQuery(e.target.value)}
-                placeholder="Søk etter sak..."
-                className="flex-1 text-sm bg-transparent outline-none placeholder:text-slate-400"
-                autoFocus
-              />
-            </div>
-            {/* Saksliste */}
-            <div className="max-h-64 overflow-y-auto">
-              {filteredCases.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-4">Ingen saker funnet</p>
-              ) : (
-                filteredCases.map((c) => (
+            <PopoverTrigger
+              id="time-case"
+              className="secondary-button w-full justify-between min-h-11"
+              aria-label="Velg sak"
+            >
+              <span className="truncate">
+                {selectedCase?.title ||
+                  (editEntry?.caseId === caseId && caseId
+                    ? "Opprinnelig sak er slettet"
+                    : "Søk og velg en sak…")}
+              </span>
+              <ChevronDown size={16} />
+            </PopoverTrigger>
+            <PopoverContent
+              className="w-(--anchor-width) min-w-64 p-0"
+              align="start"
+            >
+              <div className="flex items-center gap-2 p-3 border-b">
+                <Search size={16} />
+                <input
+                  autoFocus
+                  aria-label="Søk etter sak"
+                  className="w-full text-sm outline-none"
+                  value={caseQuery}
+                  onChange={(e) => setCaseQuery(e.target.value)}
+                  placeholder="Saksnavn eller lærested…"
+                />
+              </div>
+              <div className="max-h-64 overflow-auto">
+                {filteredCases.map((c) => (
                   <button
                     key={c.id}
                     type="button"
-                    className={cn(
-                      "w-full text-left px-3 py-2.5 hover:bg-slate-50 transition-colors flex items-start gap-2",
-                      caseId === c.id && "bg-indigo-50"
-                    )}
+                    className="flex items-center gap-2 text-left w-full px-3 py-3 hover:bg-accent"
                     onClick={() => {
-                      setValue("caseId", c.id, { shouldValidate: true });
+                      setCaseId(c.id);
                       setCaseOpen(false);
                       setCaseQuery("");
                     }}
                   >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-800 truncate">{c.title}</p>
-                      {c.description && (
-                        <p className="text-xs text-slate-400 mt-0.5 truncate">{c.description}</p>
-                      )}
-                    </div>
-                    {caseId === c.id && (
-                      <Check className="h-4 w-4 text-indigo-500 shrink-0 mt-0.5" />
-                    )}
+                    <span className="flex-1 min-w-0">
+                      <strong className="block text-xs font-medium truncate">
+                        {c.title}
+                      </strong>
+                      <small className="block text-[11px] text-muted-foreground mt-1">
+                        {c.laerested}
+                        {c.status === "avsluttet" ? " · Avsluttet" : ""}
+                      </small>
+                    </span>
+                    {caseId === c.id && <Check size={15} />}
                   </button>
-                ))
-              )}
-            </div>
-          </PopoverContent>
-        </Popover>
-        {errors.caseId && <p className="text-xs text-red-500">{errors.caseId.message}</p>}
-      </div>
-
-      {/* Dato */}
-      <div className="space-y-2">
-        <Label className="text-sm font-medium text-slate-700">Dato *</Label>
-        <Popover>
-          <PopoverTrigger
-            className={cn(
-              buttonVariants({ variant: "outline" }),
-              "w-full justify-start text-left font-normal h-11"
-            )}
-          >
-            <CalendarIcon className="mr-2 h-4 w-4 text-slate-400" />
-            {format(date, "EEEE d. MMMM yyyy", { locale: nb })}
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0">
-            <Calendar
-              mode="single"
-              selected={date}
-              onSelect={(d) => d && setDate(d)}
-              locale={nb}
-            />
-          </PopoverContent>
-        </Popover>
-      </div>
-
-      {/* Fra / Til */}
-      <div className="space-y-2">
-        <Label className="text-sm font-medium text-slate-700">Tidsrom *</Label>
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
-            <div className="relative">
-              <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-              <input
-                type="time"
-                className="w-full h-11 pl-9 pr-3 rounded-md border border-input bg-background text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                {...register("startTime")}
-              />
-            </div>
-            <p className="text-xs text-slate-500 mt-1 text-center">Fra</p>
-          </div>
-          <ArrowRight className="h-4 w-4 text-slate-400 mt-0 shrink-0" />
-          <div className="flex-1">
-            <div className="relative">
-              <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-              <input
-                type="time"
-                className="w-full h-11 pl-9 pr-3 rounded-md border border-input bg-background text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                {...register("endTime")}
-              />
-            </div>
-            <p className="text-xs text-slate-500 mt-1 text-center">Til</p>
+                ))}
+                {!filteredCases.length && (
+                  <p className="p-5 text-xs text-muted-foreground text-center">
+                    Ingen saker funnet
+                  </p>
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
+          {!cases.length && (
+            <Link href="/cases/new" className="text-link">
+              Opprett en sak først →
+            </Link>
+          )}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="time-date">Dato</Label>
+          <Input
+            id="time-date"
+            type="date"
+            required
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="h-11"
+          />
+          <div className="quick-durations">
+            <button
+              type="button"
+              onClick={() => setDate(format(new Date(), "yyyy-MM-dd"))}
+            >
+              I dag
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setDate(format(addDays(new Date(), -1), "yyyy-MM-dd"))
+              }
+            >
+              I går
+            </button>
           </div>
         </div>
-
-        {durationMin !== null && (
-          <p className="text-sm font-medium text-indigo-600 text-center">
-            = {minutesToDisplay(durationMin)}
-          </p>
-        )}
-        <div className="flex items-center justify-center gap-2">
-          <span className="text-xs text-slate-500">Trekk fra:</span>
-          {[5, 10, 15].map((mins) => (
+        <div>
+          <div className="segmented-control mb-4">
             <button
-              key={mins}
               type="button"
-              className="text-xs px-2.5 py-1 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors"
+              className={cn(mode === "interval" && "selected")}
+              aria-pressed={mode === "interval"}
+              onClick={() => setMode("interval")}
+            >
+              Fra–til
+            </button>
+            <button
+              type="button"
+              className={cn(mode === "duration" && "selected")}
+              aria-pressed={mode === "duration"}
               onClick={() => {
-                const current = timeToMinutes(endTime);
-                const next = minutesToTime(current - mins);
-                setValue("endTime", next, { shouldValidate: true });
+                if (mode === "interval" && validDuration)
+                  setDurationValue(String(minutes));
+                setMode("duration");
               }}
             >
-              −{mins} min
+              Kun varighet
             </button>
-          ))}
+          </div>
+          {mode === "interval" ? (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="time-start">Fra</Label>
+                  <Input
+                    id="time-start"
+                    type="time"
+                    required
+                    className="h-11"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="time-end">Til</Label>
+                  <Input
+                    id="time-end"
+                    type="time"
+                    required
+                    className="h-11"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="quick-durations">
+                {[15, 30, 60, 90].map((n) => (
+                  <button
+                    type="button"
+                    key={n}
+                    onClick={() => {
+                      const start = timeMinutes(startTime);
+                      if (!Number.isFinite(start) || start + n >= 1440) {
+                        setError(
+                          "Tidsrommet går over midnatt. Bruk varighet eller velg en tidligere starttid.",
+                        );
+                        return;
+                      }
+                      setError("");
+                      setEndTime(timeString(start + n));
+                    }}
+                  >
+                    {duration(n)}
+                  </button>
+                ))}
+              </div>
+              <div className="quick-durations items-center">
+                <span className="text-xs text-muted-foreground">
+                  Trekk fra pause:
+                </span>
+                {[5, 10, 15, 30].map((n) => (
+                  <button
+                    type="button"
+                    key={n}
+                    disabled={!validDuration || minutes <= n}
+                    onClick={() =>
+                      setEndTime(timeString(timeMinutes(endTime) - n))
+                    }
+                  >
+                    −{n} min
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="time-duration">Varighet i minutter</Label>
+              <Input
+                id="time-duration"
+                type="number"
+                min="1"
+                max="1440"
+                step="1"
+                required
+                className="h-11"
+                value={durationValue}
+                onChange={(e) => setDurationValue(e.target.value)}
+              />
+              <div className="quick-durations">
+                {[15, 30, 60, 90, 120].map((n) => (
+                  <button
+                    type="button"
+                    key={n}
+                    onClick={() => setDurationValue(String(n))}
+                  >
+                    {duration(n)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div
+            className="mt-4 flex items-center gap-2 rounded-lg bg-accent p-3 text-primary text-sm"
+            aria-live="polite"
+          >
+            <Clock3 size={16} />
+            <strong>
+              {validDuration ? duration(minutes) : "Velg et gyldig tidsrom"}
+            </strong>
+            <span className="text-muted-foreground text-xs">
+              {validDuration ? "registreres på saken" : ""}
+            </span>
+          </div>
         </div>
-        {errors.endTime && (
-          <p className="text-xs text-red-500">{errors.endTime.message}</p>
+        <div className="space-y-2">
+          <Label htmlFor="description">Hva jobbet du med?</Label>
+          <textarea
+            id="description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="For eksempel retting, forberedelser eller møte…"
+            rows={3}
+            className="w-full rounded-lg border border-input bg-white px-3 py-3 text-sm resize-y"
+          />
+        </div>
+        {error && (
+          <div
+            role="alert"
+            className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+          >
+            {error}
+          </div>
         )}
-      </div>
-
-      {/* Beskrivelse */}
-      <div className="space-y-2">
-        <Label htmlFor="description" className="text-sm font-medium text-slate-700">
-          Beskrivelse
-        </Label>
-        <Input
-          id="description"
-          className="h-11"
-          placeholder="Hva ble gjort?"
-          {...register("description")}
-        />
-      </div>
-
-      <div className="flex gap-3 pt-2">
-        <Button type="submit" disabled={saving} className="px-6">
-          {saving ? "Lagrer..." : editEntry ? "Lagre endringer" : "Registrer timer"}
-        </Button>
-        <Button type="button" variant="outline" onClick={() => router.back()}>
-          Avbryt
-        </Button>
-      </div>
-    </form>
+        {!editEntry && (
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={saveAndContinue}
+              onChange={(e) => setSaveAndContinue(e.target.checked)}
+            />
+            Bli her og registrer flere etter lagring
+          </label>
+        )}
+        <div className="flex flex-wrap gap-3 border-t pt-5">
+          <button type="submit" disabled={saving} className="primary-button">
+            {saving
+              ? "Lagrer…"
+              : editEntry
+                ? "Lagre endringer"
+                : "Registrer tid"}
+          </button>
+          <Link href="/timer" className="secondary-button">
+            Avbryt
+          </Link>
+        </div>
+      </form>
+    </div>
   );
 }

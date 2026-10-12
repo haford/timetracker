@@ -1,12 +1,22 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { addCase, updateCase } from "@/lib/firestore";
-import { STATUS_LABELS, SAKSTYPE_LABELS, type Case, type CaseStatus, type SaksType, type Category, type HonorarTillegg, type Delfrist, type Mote } from "@/lib/types";
+import {
+  STATUS_LABELS,
+  SAKSTYPE_LABELS,
+  type Case,
+  type CaseStatus,
+  type SaksType,
+  type Category,
+  type HonorarTillegg,
+  type Delfrist,
+  type Mote,
+} from "@/lib/types";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +27,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, Plus, X, ArrowRight } from "lucide-react";
 import { format } from "date-fns";
@@ -26,7 +40,10 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const numPre = (v: unknown) =>
-  v === "" || v === null || v === undefined || (typeof v === "number" && isNaN(v))
+  v === "" ||
+  v === null ||
+  v === undefined ||
+  (typeof v === "number" && isNaN(v))
     ? undefined
     : Number(String(v).replace(",", "."));
 
@@ -34,7 +51,13 @@ const schema = z.object({
   title: z.string().min(1, "Tittel er påkrevd"),
   description: z.string(),
   categoryId: z.string(),
-  status: z.enum(["ikke_startet", "påbegynt", "pause", "karakter_satt", "avsluttet"] as const),
+  status: z.enum([
+    "ikke_startet",
+    "påbegynt",
+    "pause",
+    "karakter_satt",
+    "avsluttet",
+  ] as const),
   sakstype: z.string().optional(),
   oppdragEpost: z.string(),
   laerested: z.string(),
@@ -71,7 +94,10 @@ type FormData = {
 };
 
 function formatNok(n: number) {
-  return new Intl.NumberFormat("nb-NO", { maximumFractionDigits: 0 }).format(n) + " kr";
+  return (
+    new Intl.NumberFormat("nb-NO", { maximumFractionDigits: 0 }).format(n) +
+    " kr"
+  );
 }
 
 interface CaseFormProps {
@@ -81,20 +107,41 @@ interface CaseFormProps {
   templateCase?: Case;
 }
 
-export function CaseForm({ userId, categories, editCase, templateCase }: CaseFormProps) {
+export function CaseForm({
+  userId,
+  categories,
+  editCase,
+  templateCase,
+}: CaseFormProps) {
   const router = useRouter();
   const src = editCase ?? templateCase;
-  const [startDate, setStartDate] = useState<Date | undefined>(editCase?.startDate);
-  const [deadline, setDeadline] = useState<Date | undefined>(editCase?.deadline);
-  const [tillegg, setTillegg] = useState<HonorarTillegg[]>(editCase?.honorarTillegg ?? []);
-  const [delfrister, setDelfrister] = useState<Delfrist[]>(editCase?.delfrister ?? []);
+  const [startDate, setStartDate] = useState<Date | undefined>(
+    editCase?.startDate,
+  );
+  const [deadline, setDeadline] = useState<Date | undefined>(
+    editCase?.deadline,
+  );
+  const [tillegg, setTillegg] = useState<HonorarTillegg[]>(
+    editCase?.honorarTillegg ?? [],
+  );
+  const [delfrister, setDelfrister] = useState<Delfrist[]>(
+    editCase?.delfrister ?? [],
+  );
   const [moter, setMoter] = useState<Mote[]>(editCase?.moter ?? []);
   const [saving, setSaving] = useState(false);
 
-  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    formState: { errors },
+  } = useForm<FormData>({
     resolver: zodResolver(schema) as Resolver<FormData>,
     defaultValues: {
-      title: editCase?.title ?? (templateCase ? `Kopi av ${templateCase.title}` : ""),
+      title:
+        editCase?.title ??
+        (templateCase ? `Kopi av ${templateCase.title}` : ""),
       description: src?.description ?? "",
       categoryId: src?.categoryId ?? "",
       status: editCase?.status ?? "ikke_startet",
@@ -124,12 +171,15 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
   const honorar = watch("honorar");
 
   const isSensur = categories.some(
-    (c) => c.id === categoryId && c.name.toLowerCase().includes("sensur")
+    (c) => c.id === categoryId && c.name.toLowerCase().includes("sensur"),
   );
 
   const [knownLaersteder, setKnownLaersteder] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem("known-laersteder") ?? "[]"); }
-    catch { return []; }
+    try {
+      return JSON.parse(localStorage.getItem("known-laersteder") ?? "[]");
+    } catch {
+      return [];
+    }
   });
 
   const basisHonorar =
@@ -148,9 +198,13 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
   const removeTillegg = (i: number) =>
     setTillegg((prev) => prev.filter((_, idx) => idx !== i));
 
-  const updateTillegg = (i: number, field: keyof HonorarTillegg, value: string | number) =>
+  const updateTillegg = (
+    i: number,
+    field: keyof HonorarTillegg,
+    value: string | number,
+  ) =>
     setTillegg((prev) =>
-      prev.map((t, idx) => (idx === i ? { ...t, [field]: value } : t))
+      prev.map((t, idx) => (idx === i ? { ...t, [field]: value } : t)),
     );
 
   const addDelfrist = () =>
@@ -160,10 +214,14 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
     setDelfrister((prev) => prev.filter((_, idx) => idx !== i));
 
   const updateDelfristLabel = (i: number, label: string) =>
-    setDelfrister((prev) => prev.map((d, idx) => (idx === i ? { ...d, label } : d)));
+    setDelfrister((prev) =>
+      prev.map((d, idx) => (idx === i ? { ...d, label } : d)),
+    );
 
   const updateDelfristDate = (i: number, date: Date | undefined) =>
-    setDelfrister((prev) => prev.map((d, idx) => (idx === i ? { ...d, date: date ?? d.date } : d)));
+    setDelfrister((prev) =>
+      prev.map((d, idx) => (idx === i ? { ...d, date: date ?? d.date } : d)),
+    );
 
   const addMote = () =>
     setMoter((prev) => [...prev, { tittel: "", dato: new Date(), tid: "" }]);
@@ -171,8 +229,14 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
   const removeMote = (i: number) =>
     setMoter((prev) => prev.filter((_, idx) => idx !== i));
 
-  const updateMote = <K extends keyof Mote>(i: number, field: K, value: Mote[K]) =>
-    setMoter((prev) => prev.map((m, idx) => (idx === i ? { ...m, [field]: value } : m)));
+  const updateMote = <K extends keyof Mote>(
+    i: number,
+    field: K,
+    value: Mote[K],
+  ) =>
+    setMoter((prev) =>
+      prev.map((m, idx) => (idx === i ? { ...m, [field]: value } : m)),
+    );
 
   const onSubmit = async (data: FormData) => {
     setSaving(true);
@@ -196,9 +260,12 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
       payload.delfrister = delfrister;
       payload.moter = moter;
       if (data.isPaid) {
-        if (data.honorarTimesats != null) payload.honorarTimesats = data.honorarTimesats;
-        if (data.honorarTimefaktor != null) payload.honorarTimefaktor = data.honorarTimefaktor;
-        if (data.honorarAntallBesvarelser != null) payload.honorarAntallBesvarelser = data.honorarAntallBesvarelser;
+        if (data.honorarTimesats != null)
+          payload.honorarTimesats = data.honorarTimesats;
+        if (data.honorarTimefaktor != null)
+          payload.honorarTimefaktor = data.honorarTimefaktor;
+        if (data.honorarAntallBesvarelser != null)
+          payload.honorarAntallBesvarelser = data.honorarAntallBesvarelser;
         if (tillegg.length > 0) payload.honorarTillegg = tillegg;
         if (data.honorar != null) payload.honorar = data.honorar;
         if (data.skattetrekk != null) payload.skattetrekk = data.skattetrekk;
@@ -208,12 +275,20 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
       if (lr && isSensur) {
         setKnownLaersteder((prev) => {
           const updated = [...new Set([lr, ...prev])];
-          try { localStorage.setItem("known-laersteder", JSON.stringify(updated)); } catch { /* */ }
+          try {
+            localStorage.setItem("known-laersteder", JSON.stringify(updated));
+          } catch {
+            /* */
+          }
           return updated;
         });
       }
       if (editCase) {
-        await updateCase(userId, editCase.id, payload as Parameters<typeof updateCase>[2]);
+        await updateCase(
+          userId,
+          editCase.id,
+          payload as Parameters<typeof updateCase>[2],
+        );
         toast.success("Sak oppdatert");
       } else {
         await addCase(userId, payload as Parameters<typeof addCase>[1]);
@@ -233,13 +308,19 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
       <div className="space-y-1.5">
         <Label htmlFor="title">Tittel *</Label>
         <Input id="title" placeholder="Sakstittel" {...register("title")} />
-        {errors.title && <p className="text-xs text-red-600">{errors.title.message}</p>}
+        {errors.title && (
+          <p className="text-xs text-red-600">{errors.title.message}</p>
+        )}
       </div>
 
       {/* Beskrivelse */}
       <div className="space-y-1.5">
         <Label htmlFor="description">Beskrivelse</Label>
-        <Input id="description" placeholder="Valgfri beskrivelse" {...register("description")} />
+        <Input
+          id="description"
+          placeholder="Valgfri beskrivelse"
+          {...register("description")}
+        />
       </div>
 
       {/* Status + Kategori */}
@@ -249,14 +330,19 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
           <Select
             value={status}
             onValueChange={(v) => v && setValue("status", v as CaseStatus)}
-            items={(Object.keys(STATUS_LABELS) as CaseStatus[]).map((s) => ({ value: s, label: STATUS_LABELS[s] }))}
+            items={(Object.keys(STATUS_LABELS) as CaseStatus[]).map((s) => ({
+              value: s,
+              label: STATUS_LABELS[s],
+            }))}
           >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {(Object.keys(STATUS_LABELS) as CaseStatus[]).map((s) => (
-                <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>
+                <SelectItem key={s} value={s}>
+                  {STATUS_LABELS[s]}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -266,7 +352,10 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
           <Select
             value={categoryId || null}
             onValueChange={(v) => setValue("categoryId", v ?? "")}
-            items={[{ value: null, label: "Ingen kategori" }, ...categories.map((c) => ({ value: c.id, label: c.name }))]}
+            items={[
+              { value: null, label: "Ingen kategori" },
+              ...categories.map((c) => ({ value: c.id, label: c.name })),
+            ]}
           >
             <SelectTrigger>
               <SelectValue placeholder="Velg kategori" />
@@ -274,7 +363,9 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
             <SelectContent>
               <SelectItem>Ingen kategori</SelectItem>
               {categories.map((cat) => (
-                <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                <SelectItem key={cat.id} value={cat.id}>
+                  {cat.name}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -286,7 +377,9 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
         <Label>Sakstype</Label>
         <Select
           value={sakstype ?? ""}
-          onValueChange={(v) => setValue("sakstype", (v || undefined) as SaksType | undefined)}
+          onValueChange={(v) =>
+            setValue("sakstype", (v || undefined) as SaksType | undefined)
+          }
         >
           <SelectTrigger>
             <SelectValue placeholder="Velg sakstype..." />
@@ -294,7 +387,9 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
           <SelectContent>
             <SelectItem value="">Ingen / annet</SelectItem>
             {(Object.keys(SAKSTYPE_LABELS) as SaksType[]).map((t) => (
-              <SelectItem key={t} value={t}>{SAKSTYPE_LABELS[t]}</SelectItem>
+              <SelectItem key={t} value={t}>
+                {SAKSTYPE_LABELS[t]}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -305,15 +400,35 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
         <div className="space-y-1.5">
           <Label>Sak opprettet</Label>
           <Popover>
-            <PopoverTrigger className={cn(buttonVariants({ variant: "outline" }), "w-full justify-start text-left font-normal", !startDate && "text-muted-foreground")}>
+            <PopoverTrigger
+              className={cn(
+                buttonVariants({ variant: "outline" }),
+                "w-full justify-start text-left font-normal",
+                !startDate && "text-muted-foreground",
+              )}
+            >
               <CalendarIcon className="mr-2 h-4 w-4" />
-              {startDate ? format(startDate, "d. MMM yyyy", { locale: nb }) : "Velg dato"}
+              {startDate
+                ? format(startDate, "d. MMM yyyy", { locale: nb })
+                : "Velg dato"}
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0">
-              <Calendar mode="single" selected={startDate} onSelect={setStartDate} locale={nb} />
+              <Calendar
+                mode="single"
+                selected={startDate}
+                onSelect={setStartDate}
+                locale={nb}
+              />
               {startDate && (
                 <div className="p-2 border-t">
-                  <Button variant="ghost" size="sm" className="w-full" onClick={() => setStartDate(undefined)}>Fjern</Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setStartDate(undefined)}
+                  >
+                    Fjern
+                  </Button>
                 </div>
               )}
             </PopoverContent>
@@ -322,15 +437,35 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
         <div className="space-y-1.5">
           <Label>Frist</Label>
           <Popover>
-            <PopoverTrigger className={cn(buttonVariants({ variant: "outline" }), "w-full justify-start text-left font-normal", !deadline && "text-muted-foreground")}>
+            <PopoverTrigger
+              className={cn(
+                buttonVariants({ variant: "outline" }),
+                "w-full justify-start text-left font-normal",
+                !deadline && "text-muted-foreground",
+              )}
+            >
               <CalendarIcon className="mr-2 h-4 w-4" />
-              {deadline ? format(deadline, "d. MMM yyyy", { locale: nb }) : "Velg dato"}
+              {deadline
+                ? format(deadline, "d. MMM yyyy", { locale: nb })
+                : "Velg dato"}
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0">
-              <Calendar mode="single" selected={deadline} onSelect={setDeadline} locale={nb} />
+              <Calendar
+                mode="single"
+                selected={deadline}
+                onSelect={setDeadline}
+                locale={nb}
+              />
               {deadline && (
                 <div className="p-2 border-t">
-                  <Button variant="ghost" size="sm" className="w-full" onClick={() => setDeadline(undefined)}>Fjern</Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setDeadline(undefined)}
+                  >
+                    Fjern
+                  </Button>
                 </div>
               )}
             </PopoverContent>
@@ -359,18 +494,30 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
       {/* Oppdrags-epost */}
       <div className="space-y-1.5">
         <Label htmlFor="oppdragEpost">Oppdrags-epost (lenke)</Label>
-        <Input id="oppdragEpost" placeholder="Lim inn lenke til e-post..." {...register("oppdragEpost")} />
+        <Input
+          id="oppdragEpost"
+          placeholder="Lim inn lenke til e-post..."
+          {...register("oppdragEpost")}
+        />
       </div>
 
       {/* Kontaktperson */}
       <div className="space-y-1.5">
         <Label htmlFor="contactName">Kontaktperson</Label>
-        <Input id="contactName" placeholder="Navn" {...register("contactName")} />
+        <Input
+          id="contactName"
+          placeholder="Navn"
+          {...register("contactName")}
+        />
       </div>
 
       <div className="space-y-1.5">
         <Label htmlFor="contactInfo">Kontaktinfo</Label>
-        <Input id="contactInfo" placeholder="Telefon, e-post el." {...register("contactInfo")} />
+        <Input
+          id="contactInfo"
+          placeholder="Telefon, e-post el."
+          {...register("contactInfo")}
+        />
       </div>
 
       {/* Saksmerknader */}
@@ -398,7 +545,9 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
           </button>
         </div>
         {delfrister.length === 0 && (
-          <p className="text-xs text-slate-400">Ingen delfrister lagt til ennå.</p>
+          <p className="text-xs text-slate-400">
+            Ingen delfrister lagt til ennå.
+          </p>
         )}
         {delfrister.map((d, i) => (
           <div key={i} className="flex items-center gap-2">
@@ -409,13 +558,17 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
               className="flex-1 text-sm h-8"
             />
             <Popover>
-              <PopoverTrigger className={cn(
-                buttonVariants({ variant: "outline" }),
-                "h-8 px-2 text-sm justify-start font-normal shrink-0 w-36",
-                !d.date && "text-muted-foreground"
-              )}>
+              <PopoverTrigger
+                className={cn(
+                  buttonVariants({ variant: "outline" }),
+                  "h-8 px-2 text-sm justify-start font-normal shrink-0 w-36",
+                  !d.date && "text-muted-foreground",
+                )}
+              >
                 <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
-                {d.date ? format(d.date, "d. MMM yyyy", { locale: nb }) : "Dato"}
+                {d.date
+                  ? format(d.date, "d. MMM yyyy", { locale: nb })
+                  : "Dato"}
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0">
                 <Calendar
@@ -461,10 +614,12 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
               className="flex-1 text-sm h-8"
             />
             <Popover>
-              <PopoverTrigger className={cn(
-                buttonVariants({ variant: "outline" }),
-                "h-8 px-2 text-sm justify-start font-normal shrink-0 w-32",
-              )}>
+              <PopoverTrigger
+                className={cn(
+                  buttonVariants({ variant: "outline" }),
+                  "h-8 px-2 text-sm justify-start font-normal shrink-0 w-32",
+                )}
+              >
                 <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
                 {format(m.dato, "d. MMM yyyy", { locale: nb })}
               </PopoverTrigger>
@@ -514,18 +669,24 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
             className="h-4 w-4 rounded border-slate-300 accent-indigo-600"
             {...register("isPaid")}
           />
-          <Label htmlFor="isPaid" className="cursor-pointer font-medium">Betalt sak</Label>
+          <Label htmlFor="isPaid" className="cursor-pointer font-medium">
+            Betalt sak
+          </Label>
         </div>
 
         {isPaid && (
           <>
             {/* Matrise */}
             <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-3">
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Honorarmatrise</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Honorarmatrise
+              </p>
 
               <div className="grid grid-cols-3 gap-2">
                 <div className="space-y-1">
-                  <Label htmlFor="honorarTimesats" className="text-xs">Timesats</Label>
+                  <Label htmlFor="honorarTimesats" className="text-xs">
+                    Timesats
+                  </Label>
                   <div className="relative">
                     <Input
                       id="honorarTimesats"
@@ -536,11 +697,15 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
                       className="pr-8 text-sm h-8"
                       {...register("honorarTimesats")}
                     />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">kr/t</span>
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                      kr/t
+                    </span>
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="honorarTimefaktor" className="text-xs">Timer / besv.</Label>
+                  <Label htmlFor="honorarTimefaktor" className="text-xs">
+                    Timer / besv.
+                  </Label>
                   <div className="relative">
                     <Input
                       id="honorarTimefaktor"
@@ -551,11 +716,15 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
                       className="pr-5 text-sm h-8"
                       {...register("honorarTimefaktor")}
                     />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">t</span>
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                      t
+                    </span>
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="honorarAntallBesvarelser" className="text-xs">Ant. besv.</Label>
+                  <Label htmlFor="honorarAntallBesvarelser" className="text-xs">
+                    Ant. besv.
+                  </Label>
                   <Input
                     id="honorarAntallBesvarelser"
                     type="number"
@@ -570,9 +739,13 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
 
               {basisHonorar != null && (
                 <div className="text-xs text-slate-500 flex items-center gap-1">
-                  <span>{timesats} kr/t × {timefaktor} t × {antall} besv.</span>
+                  <span>
+                    {timesats} kr/t × {timefaktor} t × {antall} besv.
+                  </span>
                   <span className="text-slate-300">=</span>
-                  <span className="font-semibold text-slate-700">{formatNok(basisHonorar)}</span>
+                  <span className="font-semibold text-slate-700">
+                    {formatNok(basisHonorar)}
+                  </span>
                 </div>
               )}
 
@@ -592,7 +765,9 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
                   <div key={i} className="flex items-center gap-2">
                     <Input
                       value={t.beskrivelse}
-                      onChange={(e) => updateTillegg(i, "beskrivelse", e.target.value)}
+                      onChange={(e) =>
+                        updateTillegg(i, "beskrivelse", e.target.value)
+                      }
                       placeholder="Beskrivelse"
                       className="flex-1 text-sm h-8"
                     />
@@ -601,11 +776,15 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
                         type="number"
                         min={0}
                         value={t.belop || ""}
-                        onChange={(e) => updateTillegg(i, "belop", Number(e.target.value))}
+                        onChange={(e) =>
+                          updateTillegg(i, "belop", Number(e.target.value))
+                        }
                         placeholder="0"
                         className="pr-7 text-sm h-8"
                       />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">kr</span>
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                        kr
+                      </span>
                     </div>
                     <button
                       type="button"
@@ -618,7 +797,10 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
                 ))}
                 {tillegg.length > 0 && (
                   <p className="text-xs text-slate-400 text-right">
-                    Tillegg totalt: <span className="font-medium text-slate-600">{formatNok(tilleggSum)}</span>
+                    Tillegg totalt:{" "}
+                    <span className="font-medium text-slate-600">
+                      {formatNok(tilleggSum)}
+                    </span>
                   </p>
                 )}
               </div>
@@ -628,7 +810,9 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
                 <div className="flex items-center justify-between pt-2 border-t border-slate-200">
                   <div>
                     <p className="text-xs text-slate-400">Beregnet honorar</p>
-                    <p className="text-sm font-bold text-slate-800">{formatNok(beregnetTotal)}</p>
+                    <p className="text-sm font-bold text-slate-800">
+                      {formatNok(beregnetTotal)}
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -646,7 +830,9 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
               <div className="flex items-center justify-between">
                 <Label htmlFor="honorar">Honorar (kr)</Label>
                 {isManuallyOverridden && (
-                  <span className="text-xs text-amber-500">Manuelt overstyrt</span>
+                  <span className="text-xs text-amber-500">
+                    Manuelt overstyrt
+                  </span>
                 )}
               </div>
               <Input
@@ -660,7 +846,9 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="skattetrekk">Skattetrekk for denne saken (%)</Label>
+              <Label htmlFor="skattetrekk">
+                Skattetrekk for denne saken (%)
+              </Label>
               <div className="relative">
                 <Input
                   id="skattetrekk"
@@ -671,7 +859,9 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
                   className="pr-8"
                   {...register("skattetrekk")}
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">%</span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
+                  %
+                </span>
               </div>
             </div>
 
@@ -682,7 +872,9 @@ export function CaseForm({ userId, categories, editCase, templateCase }: CaseFor
                 className="h-4 w-4 rounded border-slate-300 accent-indigo-600"
                 {...register("honorarPaid")}
               />
-              <Label htmlFor="honorarPaid" className="cursor-pointer">Honorar utbetalt</Label>
+              <Label htmlFor="honorarPaid" className="cursor-pointer">
+                Honorar utbetalt
+              </Label>
             </div>
           </>
         )}

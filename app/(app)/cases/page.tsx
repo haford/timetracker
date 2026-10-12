@@ -1,25 +1,55 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  Clock3,
+  Copy,
+  FolderOpen,
+  GraduationCap,
+  LayoutGrid,
+  List,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react";
+import { format, differenceInCalendarDays } from "date-fns";
+import { nb } from "date-fns/locale";
 import { useAuth } from "@/hooks/useAuth";
 import { useCases } from "@/hooks/useCases";
 import { useCategories } from "@/hooks/useCategories";
 import { useTimeEntries } from "@/hooks/useTimeEntries";
+import { usePreference } from "@/hooks/usePreference";
 import { deleteCase } from "@/lib/firestore";
-import { STATUS_LABELS, STATUS_COLORS, SAKSTYPE_LABELS, type CaseStatus, type SaksType } from "@/lib/types";
-import { CategoryBadge } from "@/components/CategoryBadge";
-import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { cn, calcPace } from "@/lib/utils";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
+  duration,
+  matchesSearch,
+  minutesByCase,
+  needsGrading,
+} from "@/lib/insights";
+import { cn } from "@/lib/utils";
+import {
+  STATUS_LABELS,
+  STATUS_COLORS,
+  SAKSTYPE_LABELS,
+  type Case,
+} from "@/lib/types";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageHeading,
+} from "@/components/workspace-ui";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,316 +60,418 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Plus, Search, MoreVertical, Pencil, Trash2, Clock,
-  ArrowUpDown, CalendarDays, LayoutGrid, List, Copy, User, Target, GraduationCap, ChevronDown,
-} from "lucide-react";
-import { format, isPast, isToday } from "date-fns";
-import { nb } from "date-fns/locale";
 import { toast } from "sonner";
-import type { Case, Category } from "@/lib/types";
 
-type Tab = "pågående" | "avsluttet";
-type SortKey = "oppdatert" | "frist" | "opprettet" | "tittel" | "timer" | "delfrist";
-type ViewMode = "kort" | "tabell";
-
-const ACTIVE_STATUSES: CaseStatus[] = ["ikke_startet", "påbegynt", "pause", "karakter_satt"];
-
-function minutesToHours(min: number): string {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  if (h === 0) return `${m}m`;
-  if (m === 0) return `${h}t`;
-  return `${h}t ${m}m`;
-}
-
-const PREF_NS = "cases-page:";
-function loadPref(key: string, def: string): string {
-  try { return localStorage.getItem(PREF_NS + key) ?? def; } catch { return def; }
-}
-function loadPrefArr(key: string): string[] {
-  try { return JSON.parse(localStorage.getItem(PREF_NS + key) ?? "[]"); } catch { return []; }
-}
-function savePref(key: string, val: string) {
-  try { localStorage.setItem(PREF_NS + key, val); } catch { /* */ }
-}
-function savePrefArr(key: string, val: string[]) {
-  try { localStorage.setItem(PREF_NS + key, JSON.stringify(val)); } catch { /* */ }
-}
-
+type Tab = "open" | "active" | "closed" | "all";
 export default function CasesPage() {
   const { user } = useAuth();
-  const { cases, loading } = useCases(user?.uid);
+  const { cases, loading, error } = useCases(user?.uid);
   const { categories } = useCategories(user?.uid);
-  const { entries } = useTimeEntries(user?.uid);
-  const router = useRouter();
-
-  const [tab, setTab] = useState<Tab>(() => loadPref("tab", "pågående") as Tab);
-  const [view, setView] = useState<ViewMode>(() => loadPref("view", "kort") as ViewMode);
+  const { entries, loading: timesLoading } = useTimeEntries(user?.uid);
+  const [view, setView] = usePreference("timetracker:case-view", "grid");
+  const [tab, setTab] = useState<Tab>("open");
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<string>(() => loadPref("categoryFilter", "alle"));
-  const [excludedSakstyper, setExcludedSakstyper] = useState<Set<string>>(() => new Set(loadPrefArr("excludedSakstyper")));
-  const toggleSakstype = (key: string) =>
-    setExcludedSakstyper(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
-  const [laerestedFilter, setLaerestedFilter] = useState<string>(() => loadPref("laerestedFilter", "alle"));
-  const [sortBy, setSortBy] = useState<SortKey>(() => loadPref("sortBy", "oppdatert") as SortKey);
+  const query = useDeferredValue(search);
+  const [category, setCategory] = useState("");
+  const [institution, setInstitution] = useState("");
+  const [status, setStatus] = useState("");
+  const [caseType, setCaseType] = useState("");
+  const [sort, setSort] = useState("deadline");
   const [deleteId, setDeleteId] = useState<string | null>(null);
-
-  useEffect(() => {
-    savePref("tab", tab);
-    savePref("view", view);
-    savePref("categoryFilter", categoryFilter);
-    savePrefArr("excludedSakstyper", [...excludedSakstyper]);
-    savePref("laerestedFilter", laerestedFilter);
-    savePref("sortBy", sortBy);
-  }, [tab, view, categoryFilter, excludedSakstyper, laerestedFilter, sortBy]);
-
-  const minutesByCaseId: Record<string, number> = {};
-  entries.forEach((e) => {
-    minutesByCaseId[e.caseId] = (minutesByCaseId[e.caseId] ?? 0) + e.durationMinutes;
-  });
-
-  const laerestedOptions = useMemo(
-    () => [...new Set(cases.map(c => c.laerested).filter(Boolean))].sort() as string[],
-    [cases]
-  );
-
-  const pågåendeCount = cases.filter((c) => ACTIVE_STATUSES.includes(c.status)).length;
-  const avsluttetCount = cases.filter((c) => c.status === "avsluttet").length;
-
+  const [deleting, setDeleting] = useState(false);
+  const minutes = useMemo(() => minutesByCase(entries), [entries]);
+  const categoryMap = new Map(categories.map((c) => [c.id, c]));
+  const institutions = [
+    ...new Set(cases.map((c) => c.laerested).filter((s): s is string => !!s)),
+  ].sort((a, b) => a.localeCompare(b, "nb"));
   const filtered = cases
-    .filter((c) => {
-      const matchTab = tab === "pågående"
-        ? ACTIVE_STATUSES.includes(c.status)
-        : c.status === "avsluttet";
-      const matchSearch =
-        c.title.toLowerCase().includes(search.toLowerCase()) ||
-        (c.description ?? "").toLowerCase().includes(search.toLowerCase());
-      const matchCat = categoryFilter === "alle" || c.categoryId === categoryFilter;
-      const matchSakstype = excludedSakstyper.size === 0 || !excludedSakstyper.has(c.sakstype ?? "ingen");
-      const matchLaerested = laerestedFilter === "alle" || c.laerested === laerestedFilter;
-      return matchTab && matchSearch && matchCat && matchSakstype && matchLaerested;
-    })
+    .filter(
+      (c) =>
+        (tab === "all" ||
+          (tab === "open"
+            ? c.status !== "avsluttet"
+            : tab === "active"
+              ? c.status === "påbegynt"
+              : c.status === "avsluttet")) &&
+        (!category || c.categoryId === category) &&
+        (!institution || c.laerested === institution) &&
+        (!status || c.status === status) &&
+        (!caseType || (c.sakstype ?? "other") === caseType) &&
+        matchesSearch(
+          query,
+          c.title,
+          c.description,
+          c.laerested,
+          c.contactName,
+          c.notes,
+          categoryMap.get(c.categoryId)?.name,
+        ),
+    )
     .sort((a, b) => {
-      if (sortBy === "frist") {
-        if (!a.deadline && !b.deadline) return 0;
-        if (!a.deadline) return 1;
-        if (!b.deadline) return -1;
-        return a.deadline.getTime() - b.deadline.getTime();
-      }
-      if (sortBy === "delfrist") {
-        const nextA = (a.delfrister ?? []).map(d => d.date.getTime()).sort()[0] ?? Infinity;
-        const nextB = (b.delfrister ?? []).map(d => d.date.getTime()).sort()[0] ?? Infinity;
-        if (nextA === Infinity && nextB === Infinity) return 0;
-        if (nextA === Infinity) return 1;
-        if (nextB === Infinity) return -1;
-        return nextA - nextB;
-      }
-      if (sortBy === "opprettet") return b.createdAt.getTime() - a.createdAt.getTime();
-      if (sortBy === "tittel") return a.title.localeCompare(b.title, "nb");
-      if (sortBy === "timer") return (minutesByCaseId[b.id] ?? 0) - (minutesByCaseId[a.id] ?? 0);
-      return b.updatedAt.getTime() - a.updatedAt.getTime();
+      if (sort === "title") return a.title.localeCompare(b.title, "nb");
+      if (sort === "hours")
+        return (minutes.get(b.id) ?? 0) - (minutes.get(a.id) ?? 0);
+      if (sort === "updated")
+        return b.updatedAt.getTime() - a.updatedAt.getTime();
+      if (sort === "created")
+        return b.createdAt.getTime() - a.createdAt.getTime();
+      const aTime = needsGrading(a)
+        ? (a.deadline?.getTime() ?? Infinity)
+        : Infinity;
+      const bTime = needsGrading(b)
+        ? (b.deadline?.getTime() ?? Infinity)
+        : Infinity;
+      return aTime === bTime
+        ? b.updatedAt.getTime() - a.updatedAt.getTime()
+        : aTime - bTime;
     });
-
-  const handleDelete = async () => {
-    if (!deleteId || !user) return;
-    await deleteCase(user.uid, deleteId);
-    toast.success("Sak slettet");
-    setDeleteId(null);
-  };
-
-  const sharedProps = { router, minutesByCaseId, categories, onDelete: setDeleteId };
-
+  const tabs: { id: Tab; label: string; count: number }[] = [
+    {
+      id: "open",
+      label: "Åpne saker",
+      count: cases.filter((c) => c.status !== "avsluttet").length,
+    },
+    {
+      id: "active",
+      label: "I arbeid",
+      count: cases.filter((c) => c.status === "påbegynt").length,
+    },
+    {
+      id: "closed",
+      label: "Avsluttet",
+      count: cases.filter((c) => c.status === "avsluttet").length,
+    },
+    { id: "all", label: "Alle saker", count: cases.length },
+  ];
+  const hasFilter = !!(search || category || institution || status || caseType);
+  function clearFilters() {
+    setSearch("");
+    setCategory("");
+    setInstitution("");
+    setStatus("");
+    setCaseType("");
+  }
+  async function remove() {
+    if (!user || !deleteId || deleting) return;
+    setDeleting(true);
+    try {
+      await deleteCase(user.uid, deleteId);
+      toast.success("Saken er slettet. Timeregistreringene er beholdt.");
+      setDeleteId(null);
+    } catch {
+      toast.error("Saken kunne ikke slettes. Prøv igjen.");
+    } finally {
+      setDeleting(false);
+    }
+  }
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="mb-5 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Saker</h1>
-        <Link href="/cases/new" className={cn(buttonVariants({ variant: "default" }))}>
-          <Plus className="h-4 w-4 mr-1" />
-          Ny sak
-        </Link>
+    <div className="workspace-page">
+      <PageHeading
+        eyebrow="Dine oppdrag"
+        title="Saker"
+        description="Alt du jobber med, samlet på ett sted."
+        actions={
+          <Link href="/cases/new" className="primary-button">
+            <Plus size={17} />
+            Ny sak
+          </Link>
+        }
+      />
+      <div className="case-tabs" aria-label="Saksutvalg">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            className={cn("case-tab", tab === t.id && "selected")}
+            aria-pressed={tab === t.id}
+            onClick={() => {
+              setTab(t.id);
+              setStatus("");
+            }}
+          >
+            {t.label}
+            <span>{t.count}</span>
+          </button>
+        ))}
+        <div className="segmented-control ml-auto">
+          <button
+            onClick={() => setView("grid")}
+            aria-label="Kortvisning"
+            aria-pressed={view === "grid"}
+            className={cn(view === "grid" && "selected")}
+          >
+            <LayoutGrid size={15} />
+          </button>
+          <button
+            onClick={() => setView("list")}
+            aria-label="Listevisning"
+            aria-pressed={view === "list"}
+            className={cn(view === "list" && "selected")}
+          >
+            <List size={15} />
+          </button>
+        </div>
       </div>
-
-      {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-slate-200 mb-5">
-        <TabButton active={tab === "pågående"} onClick={() => setTab("pågående")} count={pågåendeCount}>
-          Pågående
-        </TabButton>
-        <TabButton active={tab === "avsluttet"} onClick={() => setTab("avsluttet")} count={avsluttetCount}>
-          Avsluttede
-        </TabButton>
-      </div>
-
-      {/* Toolbar */}
-      <div className="mb-5 flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-40">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Søk i saker..."
-            className="pl-9"
+      <div className="filter-toolbar">
+        <label className="filter-search">
+          <Search size={17} />
+          <input
+            aria-label="Søk i saker"
+            placeholder="Søk etter sak, lærested eller kontakt…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-        </div>
-        {categories.length > 0 && (
-          <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v ?? "alle")}>
-            <SelectTrigger className="w-44">
-              <span className="text-sm truncate">
-                {categoryFilter === "alle"
-                  ? "Alle kategorier"
-                  : categories.find((c) => c.id === categoryFilter)?.name ?? "Alle kategorier"}
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="alle">Alle kategorier</SelectItem>
-              {categories.map((cat) => (
-                <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        <DropdownMenu>
-          <DropdownMenuTrigger className={cn(
-            buttonVariants({ variant: "outline" }),
-            "h-9 px-3 gap-2 text-sm font-normal",
-            excludedSakstyper.size > 0 && "border-indigo-400 text-indigo-700"
-          )}>
-            {excludedSakstyper.size === 0
-              ? "Alle sakstyper"
-              : `Sakstyper (${excludedSakstyper.size} skjult)`}
-            <ChevronDown className="h-3.5 w-3.5 opacity-50 ml-auto" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-64">
-            {(Object.keys(SAKSTYPE_LABELS) as SaksType[]).map((t) => (
-              <DropdownMenuCheckboxItem
-                key={t}
-                checked={!excludedSakstyper.has(t)}
-                onCheckedChange={() => toggleSakstype(t)}
-              >
-                {SAKSTYPE_LABELS[t]}
-              </DropdownMenuCheckboxItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem
-              checked={!excludedSakstyper.has("ingen")}
-              onCheckedChange={() => toggleSakstype("ingen")}
-            >
-              Ingen / annet
-            </DropdownMenuCheckboxItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        {laerestedOptions.length > 0 && (
-          <Select value={laerestedFilter} onValueChange={(v) => setLaerestedFilter(v ?? "alle")}>
-            <SelectTrigger className="w-44">
-              <span className="text-sm truncate">
-                {laerestedFilter === "alle" ? "Alle læresteder" : laerestedFilter}
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="alle">Alle læresteder</SelectItem>
-              {laerestedOptions.map((l) => (
-                <SelectItem key={l} value={l}>{l}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        <Select value={sortBy} onValueChange={(v) => v && setSortBy(v as SortKey)}>
-          <SelectTrigger className="w-44">
-            <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 mr-1.5" />
-            <span className="text-sm truncate">
-              {{ oppdatert: "Sist oppdatert", frist: "Frist", opprettet: "Opprettet", tittel: "Tittel", timer: "Timer", delfrist: "Delfrist" }[sortBy]}
-            </span>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="oppdatert">Sist oppdatert</SelectItem>
-            <SelectItem value="frist">Frist</SelectItem>
-            <SelectItem value="delfrist">Delfrist</SelectItem>
-            <SelectItem value="opprettet">Opprettet</SelectItem>
-            <SelectItem value="tittel">Tittel</SelectItem>
-            <SelectItem value="timer">Timer (flest)</SelectItem>
-          </SelectContent>
-        </Select>
-        {/* View toggle */}
-        <div className="flex rounded-lg border border-slate-200 overflow-hidden">
-          <button
-            onClick={() => setView("kort")}
-            className={cn("px-2.5 py-1.5 transition-colors", view === "kort" ? "bg-slate-900 text-white" : "bg-white text-slate-400 hover:text-slate-600")}
-            title="Kortvisning"
-          >
-            <LayoutGrid className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => setView("tabell")}
-            className={cn("px-2.5 py-1.5 border-l border-slate-200 transition-colors", view === "tabell" ? "bg-slate-900 text-white" : "bg-white text-slate-400 hover:text-slate-600")}
-            title="Tabellvisning"
-          >
-            <List className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Result count */}
-      {!loading && (
-        <p className="text-xs text-slate-400 mb-3">
-          {filtered.length} {filtered.length === 1 ? "sak" : "saker"}
-        </p>
-      )}
-
-      {/* Content */}
-      {loading ? (
-        <div className="text-center py-16 text-slate-400 text-sm">Laster...</div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-16">
-          <p className="text-slate-400 text-sm">Ingen saker å vise</p>
-          {tab === "pågående" && (
-            <Link href="/cases/new" className={cn(buttonVariants({ variant: "outline" }), "mt-4")}>
-              Opprett første sak
-            </Link>
-          )}
-        </div>
-      ) : view === "kort" ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {filtered.map((c) => (
-            <CaseCard key={c.id} c={c} {...sharedProps} />
+        </label>
+        <select
+          aria-label="Kategori"
+          className="filter-select"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+        >
+          <option value="">Alle kategorier</option>
+          {categories.map((c) => (
+            <option value={c.id} key={c.id}>
+              {c.name}
+            </option>
           ))}
+        </select>
+        <select
+          aria-label="Lærested"
+          className="filter-select"
+          value={institution}
+          onChange={(e) => setInstitution(e.target.value)}
+        >
+          <option value="">Alle læresteder</option>
+          {institutions.map((s) => (
+            <option key={s}>{s}</option>
+          ))}
+        </select>
+        <select
+          aria-label="Sakstype"
+          className="filter-select"
+          value={caseType}
+          onChange={(e) => setCaseType(e.target.value)}
+        >
+          <option value="">Alle sakstyper</option>
+          {Object.entries(SAKSTYPE_LABELS).map(([id, label]) => (
+            <option key={id} value={id}>
+              {label}
+            </option>
+          ))}
+          <option value="other">Annet / ikke satt</option>
+        </select>
+        <select
+          aria-label="Status"
+          className="filter-select"
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+        >
+          <option value="">Alle statuser</option>
+          {Object.entries(STATUS_LABELS).map(([id, label]) => (
+            <option key={id} value={id}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Sorter saker"
+          className="filter-select"
+          value={sort}
+          onChange={(e) => setSort(e.target.value)}
+        >
+          <option value="deadline">Nærmeste frist</option>
+          <option value="updated">Sist oppdatert</option>
+          <option value="created">Nyeste først</option>
+          <option value="title">Alfabetisk</option>
+          <option value="hours">Mest tid brukt</option>
+        </select>
+      </div>
+      <div className="flex justify-between items-center mb-4">
+        <p className="filter-count" aria-live="polite">
+          {filtered.length} {filtered.length === 1 ? "sak" : "saker"}
+          {hasFilter ? " i utvalget" : ""}
+        </p>
+        {hasFilter && (
+          <button className="filter-reset" onClick={clearFilters}>
+            Nullstill filtre
+          </button>
+        )}
+      </div>
+      {error ? (
+        <ErrorState message={error} />
+      ) : loading ? (
+        <LoadingState label="Henter sakene…" />
+      ) : !filtered.length ? (
+        <EmptyState
+          title={
+            cases.length
+              ? "Ingen saker i dette utvalget"
+              : "Det første oppdraget ditt"
+          }
+          description={
+            cases.length
+              ? "Juster søket eller velg en annen status for å finne saken."
+              : "Samle frister, timeføring, dokumenter og honorar på hver sak."
+          }
+          action={
+            cases.length ? (
+              <button
+                className="secondary-button"
+                onClick={() => {
+                  clearFilters();
+                  setTab("all");
+                }}
+              >
+                Vis alle saker
+              </button>
+            ) : (
+              <Link className="primary-button" href="/cases/new">
+                <Plus size={16} />
+                Opprett en sak
+              </Link>
+            )
+          }
+        />
+      ) : view === "grid" ? (
+        <div className="cases-grid">
+          {filtered.map((c) => {
+            const cat = categoryMap.get(c.categoryId);
+            const graded =
+              c.gradeProgress?.reduce((n, p) => n + p.antallRettet, 0) ?? 0;
+            const total = c.honorarAntallBesvarelser ?? 0;
+            return (
+              <article className="case-card" key={c.id}>
+                <div className="case-card-top">
+                  <span className={cn("status-pill", STATUS_COLORS[c.status])}>
+                    {STATUS_LABELS[c.status]}
+                  </span>
+                  <CaseMenu c={c} onDelete={setDeleteId} />
+                </div>
+                <Link href={`/cases/${c.id}`} className="case-card-title">
+                  {c.title}
+                </Link>
+                {c.description && (
+                  <p className="case-card-description">{c.description}</p>
+                )}
+                <div className="case-card-meta">
+                  <FolderOpen size={12} />
+                  <span style={{ color: cat?.color }}>
+                    {cat?.name || "Uten kategori"}
+                  </span>
+                </div>
+                {c.laerested && (
+                  <div className="case-card-meta">
+                    <GraduationCap size={13} />
+                    {c.laerested}
+                  </div>
+                )}
+                {total > 0 ? (
+                  <div className="case-card-progress">
+                    <div>
+                      <span>
+                        {graded} av {total} rettet
+                      </span>
+                      <span>{Math.round((graded / total) * 100)} %</span>
+                    </div>
+                    <progress
+                      max={total}
+                      value={Math.min(total, graded)}
+                      aria-label={`${graded} av ${total} besvarelser rettet`}
+                    />
+                  </div>
+                ) : (
+                  <div className="case-card-spacer" />
+                )}
+                <div className="case-card-footer">
+                  <DeadlineInfo c={c} />
+                  <Link
+                    className="inline-flex items-center gap-1"
+                    href={`/timer/new?caseId=${c.id}`}
+                    title="Registrer mer tid"
+                  >
+                    <Clock3 size={12} />
+                    {timesLoading ? "…" : duration(minutes.get(c.id) ?? 0)}
+                    <Plus size={12} />
+                  </Link>
+                </div>
+              </article>
+            );
+          })}
         </div>
       ) : (
-        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-          <div className="grid grid-cols-[1fr_150px_170px_60px_36px] px-4 py-2.5 bg-slate-50 border-b border-slate-200">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Sak</p>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3">Lærested</p>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3">Frist</p>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-2 text-right">Timer</p>
-            <div />
-          </div>
-          <div className="divide-y divide-slate-100">
-            {filtered.map((c) => (
-              <CaseRow key={c.id} c={c} {...sharedProps} />
-            ))}
-          </div>
+        <div className="data-table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Sak / lærested</th>
+                <th>Status</th>
+                <th>Frist</th>
+                <th className="numeric">Registrert tid</th>
+                <th>
+                  <span className="sr-only">Handlinger</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((c) => (
+                <tr key={c.id}>
+                  <td>
+                    <Link href={`/cases/${c.id}`}>
+                      <strong>{c.title}</strong>
+                      <small>
+                        {c.laerested || categoryMap.get(c.categoryId)?.name}
+                      </small>
+                    </Link>
+                  </td>
+                  <td>
+                    <span
+                      className={cn("status-pill", STATUS_COLORS[c.status])}
+                    >
+                      {STATUS_LABELS[c.status]}
+                    </span>
+                  </td>
+                  <td>
+                    <DeadlineInfo c={c} />
+                  </td>
+                  <td className="numeric">
+                    {timesLoading ? "…" : duration(minutes.get(c.id) ?? 0)}
+                  </td>
+                  <td>
+                    <CaseMenu c={c} onDelete={setDeleteId} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
-
-      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+      <AlertDialog
+        open={!!deleteId}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteId(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Slett sak?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Slette «{cases.find((c) => c.id === deleteId)?.title}»?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Dette vil slette saken permanent. Timeentries beholdes.
+              Saken slettes permanent. Timeregistreringene beholdes i
+              timeloggen.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Avbryt</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">Slett</AlertDialogAction>
+            <AlertDialogCancel disabled={deleting}>Avbryt</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={(event) => {
+                event.preventDefault();
+                void remove();
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleting ? "Sletter…" : "Slett sak"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -347,312 +479,59 @@ export default function CasesPage() {
   );
 }
 
-// ── Tab button ────────────────────────────────────────────────
-function TabButton({ active, onClick, count, children }: {
-  active: boolean; onClick: () => void; count: number; children: React.ReactNode;
-}) {
+function DeadlineInfo({ c }: { c: Case }) {
+  if (!c.deadline) return <span>Ingen frist</span>;
+  const days = differenceInCalendarDays(c.deadline, new Date());
+  const overdue = days < 0 && needsGrading(c);
   return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "px-4 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 -mb-px",
-        active
-          ? "border-slate-900 text-slate-900"
-          : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+    <span className={cn(overdue && "text-danger")}>
+      <span>{format(c.deadline, "d. MMM yyyy", { locale: nb })}</span>
+      {overdue && (
+        <small className="block">{Math.abs(days)} dager over frist</small>
       )}
-    >
-      {children}
-      <span className={cn(
-        "text-xs px-1.5 py-0.5 rounded-full font-medium",
-        active ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500"
-      )}>
-        {count}
-      </span>
-    </button>
-  );
-}
-
-// ── Shared row menu ───────────────────────────────────────────
-function CaseMenu({ c, router, onDelete }: {
-  c: Case;
-  router: ReturnType<typeof useRouter>;
-  onDelete: (id: string) => void;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "h-7 w-7 shrink-0")}
-        onClick={(e) => e.preventDefault()}
-      >
-        <MoreVertical className="h-4 w-4" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => router.push(`/cases/${c.id}/edit`)}>
-          <Pencil className="h-4 w-4 mr-2" />Rediger
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => router.push(`/cases/new?fra=${c.id}`)}>
-          <Copy className="h-4 w-4 mr-2" />Dupliser
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => router.push(`/timer/new?caseId=${c.id}`)}>
-          <Clock className="h-4 w-4 mr-2" />Registrer timer
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem className="text-red-600" onClick={() => onDelete(c.id)}>
-          <Trash2 className="h-4 w-4 mr-2" />Slett
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-// ── Pace badge (besvarelser/dag for å rekke fristen) ─────────
-function PaceBadge({ c }: { c: Case }) {
-  if (c.status === "avsluttet") return null;
-  const pace = calcPace(c.honorarAntallBesvarelser, c.deadline, c.gradeProgress);
-  if (!pace) return null;
-  if (pace.kind === "overdue") return null; // already shown via "utgått" label
-
-  const text =
-    pace.kind === "today"
-      ? `I dag: ${pace.total}`
-      : `${pace.perDay}/dag`;
-
-  const color =
-    pace.kind === "today"
-      ? "text-amber-700 bg-amber-50 border-amber-200"
-      : "text-indigo-700 bg-indigo-50 border-indigo-200";
-
-  return (
-    <span className={cn("inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-md border", color)}>
-      <Target className="h-3 w-3" />
-      {text}
     </span>
   );
 }
-
-// ── Card view ────────────────────────────────────────────────
-function CaseCard({ c, router, minutesByCaseId, categories, onDelete }: {
+function CaseMenu({
+  c,
+  onDelete,
+}: {
   c: Case;
-  router: ReturnType<typeof useRouter>;
-  minutesByCaseId: Record<string, number>;
-  categories: Category[];
   onDelete: (id: string) => void;
 }) {
-  const cat = categories.find((x) => x.id === c.categoryId);
-  const totalMin = minutesByCaseId[c.id] ?? 0;
-  const deadlineOverdue = c.deadline && isPast(c.deadline) && !isToday(c.deadline)
-    && c.status !== "avsluttet" && c.status !== "karakter_satt";
-  const deadlineHeld = c.deadline && isPast(c.deadline) && !isToday(c.deadline)
-    && c.status === "karakter_satt";
-
+  const router = useRouter();
   return (
-    <Link href={`/cases/${c.id}`} className="block group">
-      <div className="rounded-xl border border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm transition-all p-4 h-full flex flex-col">
-        {/* Top: badges + menu */}
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <div className="flex flex-wrap gap-1.5">
-            <Badge className={`text-xs ${STATUS_COLORS[c.status]}`} variant="outline">
-              {STATUS_LABELS[c.status]}
-            </Badge>
-            {cat && <CategoryBadge category={cat} small />}
-            {c.sakstype && (
-              <Badge className="text-xs bg-sky-50 text-sky-700 border-sky-200" variant="outline">
-                {SAKSTYPE_LABELS[c.sakstype]}
-              </Badge>
-            )}
-          </div>
-          <div onClick={(e) => e.preventDefault()}>
-            <CaseMenu c={c} router={router} onDelete={onDelete} />
-          </div>
-        </div>
-
-        {/* Title */}
-        <h2 className="font-semibold text-slate-900 leading-snug mb-1 group-hover:text-indigo-700 transition-colors">
-          {c.title}
-        </h2>
-
-        {/* Description */}
-        {c.description && (
-          <p className="text-sm text-slate-500 line-clamp-2 mb-2">{c.description}</p>
-        )}
-
-        {/* Contact */}
-        {c.contactName && (
-          <p className="text-xs text-slate-400 flex items-center gap-1 mb-2">
-            <User className="h-3 w-3" />{c.contactName}
-          </p>
-        )}
-        {c.laerested && (
-          <p className="text-xs text-slate-400 flex items-center gap-1 mb-2">
-            <GraduationCap className="h-3 w-3" />{c.laerested}
-          </p>
-        )}
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Footer */}
-        <div className="flex items-center justify-between pt-3 mt-2 border-t border-slate-100 text-xs text-slate-400">
-          <div className="flex items-center gap-3">
-            {c.startDate && (
-              <span className="flex items-center gap-1">
-                <CalendarDays className="h-3 w-3" />
-                {format(c.startDate, "d. MMM yyyy", { locale: nb })}
-              </span>
-            )}
-            {c.deadline && (
-              <span className={cn(
-                "flex items-center gap-1",
-                deadlineOverdue ? "text-red-500 font-medium"
-                  : deadlineHeld ? "text-emerald-600 font-medium" : ""
-              )}>
-                <CalendarDays className="h-3 w-3" />
-                {deadlineHeld
-                  ? `Frist holdt: ${format(c.deadline, "d. MMM yyyy", { locale: nb })}`
-                  : `Frist: ${format(c.deadline, "d. MMM yyyy", { locale: nb })}${deadlineOverdue ? " \u2014 utg\u00e5tt" : ""}`
-                }
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <PaceBadge c={c} />
-            {totalMin > 0 && (
-              <span className="flex items-center gap-1 font-medium text-slate-500">
-                <Clock className="h-3 w-3" />
-                {minutesToHours(totalMin)}
-              </span>
-            )}
-          </div>
-        </div>
-        {/* Delfrister */}
-        {c.delfrister && c.delfrister.length > 0 && (
-          <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-1.5">
-            {[...c.delfrister]
-              .sort((a, b) => a.date.getTime() - b.date.getTime())
-              .map((d, i) => {
-                const overdue = isPast(d.date) && !isToday(d.date) && c.status !== "avsluttet";
-                return (
-                  <span
-                    key={i}
-                    className={cn(
-                      "inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border",
-                      overdue
-                        ? "text-red-600 bg-red-50 border-red-200"
-                        : "text-slate-500 bg-slate-50 border-slate-200"
-                    )}
-                  >
-                    <CalendarDays className="h-3 w-3 shrink-0" />
-                    {d.label ? `${d.label}: ` : ""}{format(d.date, "d. MMM", { locale: nb })}
-                  </span>
-                );
-              })}
-          </div>
-        )}
-      </div>
-    </Link>
-  );
-}
-
-// ── Table/list row view ───────────────────────────────────────
-function CaseRow({ c, router, minutesByCaseId, categories, onDelete }: {
-  c: Case;
-  router: ReturnType<typeof useRouter>;
-  minutesByCaseId: Record<string, number>;
-  categories: Category[];
-  onDelete: (id: string) => void;
-}) {
-  const cat = categories.find((x) => x.id === c.categoryId);
-  const totalMin = minutesByCaseId[c.id] ?? 0;
-  const deadlineOverdue = c.deadline && isPast(c.deadline) && !isToday(c.deadline)
-    && c.status !== "avsluttet" && c.status !== "karakter_satt";
-  const deadlineHeld = c.deadline && isPast(c.deadline) && !isToday(c.deadline)
-    && c.status === "karakter_satt";
-
-  return (
-    <div className="grid grid-cols-[1fr_150px_170px_60px_36px] items-center px-4 py-3 hover:bg-slate-50 transition-colors group">
-      {/* Col 1: Title + badges + meta */}
-      <div className="min-w-0 pr-4">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <Link href={`/cases/${c.id}`} className="font-medium text-slate-900 hover:underline leading-snug">
-            {c.title}
-          </Link>
-          <Badge className={`text-xs shrink-0 ${STATUS_COLORS[c.status]}`} variant="outline">
-            {STATUS_LABELS[c.status]}
-          </Badge>
-          {cat && <CategoryBadge category={cat} small />}
-          {c.sakstype && (
-            <Badge className="text-xs shrink-0 bg-sky-50 text-sky-700 border-sky-200" variant="outline">
-              {SAKSTYPE_LABELS[c.sakstype]}
-            </Badge>
-          )}
-        </div>
-        {(c.description || c.contactName) && (
-          <p className="text-xs text-slate-400 mt-0.5 truncate">
-            {c.description || (c.contactName && `Medsensor: ${c.contactName}`)}
-          </p>
-        )}
-      </div>
-
-      {/* Col 2: Lærested */}
-      <div className="px-3 min-w-0">
-        {c.laerested ? (
-          <span className="text-xs text-slate-500 flex items-center gap-1" title={c.laerested}>
-            <GraduationCap className="h-3 w-3 shrink-0 text-slate-400" />
-            <span className="truncate">{c.laerested}</span>
-          </span>
-        ) : (
-          <span className="text-slate-200 text-xs">—</span>
-        )}
-      </div>
-
-      {/* Col 3: Frist + startDate + pace */}
-      <div className="px-3 min-w-0">
-        {c.deadline ? (
-          <div>
-            <span className={cn(
-              "text-xs flex items-center gap-1",
-              deadlineOverdue ? "text-red-500 font-medium"
-                : deadlineHeld ? "text-emerald-600 font-medium"
-                : "text-slate-500"
-            )}>
-              <CalendarDays className="h-3 w-3 shrink-0" />
-              {deadlineHeld
-                ? `Holdt ${format(c.deadline, "d. MMM yy", { locale: nb })}`
-                : `${format(c.deadline, "d. MMM yyyy", { locale: nb })}${deadlineOverdue ? " – utgått" : ""}`
-              }
-            </span>
-            {c.startDate && (
-              <span className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                <CalendarDays className="h-3 w-3 shrink-0" />
-                {format(c.startDate, "d. MMM yyyy", { locale: nb })}
-              </span>
-            )}
-            <PaceBadge c={c} />
-          </div>
-        ) : c.startDate ? (
-          <span className="text-xs text-slate-400 flex items-center gap-1">
-            <CalendarDays className="h-3 w-3 shrink-0" />
-            {format(c.startDate, "d. MMM yyyy", { locale: nb })}
-          </span>
-        ) : (
-          <span className="text-slate-200 text-xs">—</span>
-        )}
-      </div>
-
-      {/* Col 4: Timer */}
-      <div className="px-2">
-        <span className={cn(
-          "text-xs flex items-center gap-0.5 justify-end font-medium",
-          totalMin > 0 ? "text-slate-500" : "text-slate-300"
-        )}>
-          <Clock className="h-3 w-3" />{minutesToHours(totalMin)}
-        </span>
-      </div>
-
-      {/* Col 5: Menu */}
-      <div className="flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-        <CaseMenu c={c} router={router} onDelete={onDelete} />
-      </div>
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className="icon-button"
+        aria-label={`Handlinger for ${c.title}`}
+      >
+        <MoreHorizontal size={18} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => router.push(`/cases/${c.id}/edit`)}>
+          <Pencil size={15} />
+          Rediger sak
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => router.push(`/timer/new?caseId=${c.id}`)}
+        >
+          <Clock3 size={15} />
+          Registrer tid
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => router.push(`/cases/new?fra=${c.id}`)}>
+          <Copy size={15} />
+          Dupliser sak
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="text-red-600"
+          onClick={() => onDelete(c.id)}
+        >
+          <Trash2 size={15} />
+          Slett sak
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

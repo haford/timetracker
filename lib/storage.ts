@@ -5,7 +5,6 @@ import {
   deleteObject,
   type UploadTaskSnapshot,
 } from "firebase/storage";
-import { updateCase } from "./firestore";
 import {
   collection,
   addDoc,
@@ -26,7 +25,7 @@ const docsCol = (userId: string, caseId: string) =>
 export const subscribeCaseDocuments = (
   userId: string,
   caseId: string,
-  cb: (docs: CaseDocument[]) => void
+  cb: (docs: CaseDocument[]) => void,
 ): Unsubscribe => {
   const q = query(docsCol(userId, caseId), orderBy("uploadedAt", "desc"));
   return onSnapshot(q, (snap) =>
@@ -41,8 +40,8 @@ export const subscribeCaseDocuments = (
           size: data.size as number,
           uploadedAt: (data.uploadedAt as Timestamp).toDate(),
         };
-      })
-    )
+      }),
+    ),
   );
 };
 
@@ -50,7 +49,7 @@ export const uploadCaseDocument = (
   userId: string,
   caseId: string,
   file: File,
-  onProgress: (pct: number) => void
+  onProgress: (pct: number) => void,
 ): Promise<void> => {
   return new Promise((resolve, reject) => {
     const safeName = file.name.replace(/[^a-zA-Z0-9._\-æøåÆØÅ ]/g, "_");
@@ -61,7 +60,9 @@ export const uploadCaseDocument = (
     task.on(
       "state_changed",
       (snapshot: UploadTaskSnapshot) => {
-        onProgress(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100));
+        onProgress(
+          Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100),
+        );
       },
       reject,
       async () => {
@@ -78,7 +79,7 @@ export const uploadCaseDocument = (
         } catch (err) {
           reject(err);
         }
-      }
+      },
     );
   });
 };
@@ -86,21 +87,32 @@ export const uploadCaseDocument = (
 export const deleteCaseDocument = async (
   userId: string,
   caseId: string,
-  document: CaseDocument
+  document: CaseDocument,
 ): Promise<void> => {
   try {
     await deleteObject(ref(getFirebaseStorage(), document.storagePath));
   } catch (err: unknown) {
-    if ((err as { code?: string })?.code !== "storage/object-not-found") throw err;
+    if ((err as { code?: string })?.code !== "storage/object-not-found")
+      throw err;
   }
-  await deleteDoc(doc(getFirebaseDb(), "users", userId, "cases", caseId, "documents", document.id));
+  await deleteDoc(
+    doc(
+      getFirebaseDb(),
+      "users",
+      userId,
+      "cases",
+      caseId,
+      "documents",
+      document.id,
+    ),
+  );
 };
 
 export const uploadSignertAvtale = (
   userId: string,
   caseId: string,
   file: File,
-  onProgress: (pct: number) => void
+  onProgress: (pct: number) => void,
 ): Promise<{ downloadUrl: string; storagePath: string }> => {
   return new Promise((resolve, reject) => {
     const safeName = file.name.replace(/[^a-zA-Z0-9._\-æøåÆØÅ ]/g, "_");
@@ -111,7 +123,9 @@ export const uploadSignertAvtale = (
     task.on(
       "state_changed",
       (snapshot: UploadTaskSnapshot) => {
-        onProgress(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100));
+        onProgress(
+          Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100),
+        );
       },
       reject,
       async () => {
@@ -121,16 +135,19 @@ export const uploadSignertAvtale = (
         } catch (err) {
           reject(err);
         }
-      }
+      },
     );
   });
 };
 
-export const deleteSignertAvtale = async (storagePath: string): Promise<void> => {
+export const deleteSignertAvtale = async (
+  storagePath: string,
+): Promise<void> => {
   try {
     await deleteObject(ref(getFirebaseStorage(), storagePath));
   } catch (err: unknown) {
-    if ((err as { code?: string })?.code !== "storage/object-not-found") throw err;
+    if ((err as { code?: string })?.code !== "storage/object-not-found")
+      throw err;
   }
 };
 
@@ -138,20 +155,28 @@ export const uploadLonnsslipp = (
   userId: string,
   caseId: string,
   file: File,
-  onProgress: (pct: number) => void
+  onProgress: (pct: number) => void,
 ): Promise<{ downloadUrl: string; storagePath: string }> => {
   return new Promise((resolve, reject) => {
     const safeName = file.name.replace(/[^a-zA-Z0-9._\-æøåÆØÅ ]/g, "_");
     const storagePath = `users/${userId}/cases/${caseId}/lonnsslipp_${Date.now()}_${safeName}`;
     const storageRef = ref(getFirebaseStorage(), storagePath);
     const task = uploadBytesResumable(storageRef, file);
-    task.on("state_changed",
-      (s: UploadTaskSnapshot) => onProgress(Math.round((s.bytesTransferred / s.totalBytes) * 100)),
+    task.on(
+      "state_changed",
+      (s: UploadTaskSnapshot) =>
+        onProgress(Math.round((s.bytesTransferred / s.totalBytes) * 100)),
       reject,
       async () => {
-        try { resolve({ downloadUrl: await getDownloadURL(task.snapshot.ref), storagePath }); }
-        catch (err) { reject(err); }
-      }
+        try {
+          resolve({
+            downloadUrl: await getDownloadURL(task.snapshot.ref),
+            storagePath,
+          });
+        } catch (err) {
+          reject(err);
+        }
+      },
     );
   });
 };
@@ -160,6 +185,7 @@ export const deleteLonnsslipp = async (storagePath: string): Promise<void> => {
   try {
     await deleteObject(ref(getFirebaseStorage(), storagePath));
   } catch (err: unknown) {
-    if ((err as { code?: string })?.code !== "storage/object-not-found") throw err;
+    if ((err as { code?: string })?.code !== "storage/object-not-found")
+      throw err;
   }
 };

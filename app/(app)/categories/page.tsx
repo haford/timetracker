@@ -28,11 +28,19 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { PageHeading } from "@/components/workspace-ui";
 
 const PRESET_COLORS = [
-  "#3B82F6", "#8B5CF6", "#10B981", "#F59E0B",
-  "#EF4444", "#EC4899", "#06B6D4", "#84CC16",
-  "#F97316", "#6366F1",
+  "#3B82F6",
+  "#8B5CF6",
+  "#10B981",
+  "#F59E0B",
+  "#EF4444",
+  "#EC4899",
+  "#06B6D4",
+  "#84CC16",
+  "#F97316",
+  "#6366F1",
 ];
 
 interface CategoryDialogProps {
@@ -42,7 +50,12 @@ interface CategoryDialogProps {
   initial?: Category;
 }
 
-function CategoryDialog({ open, onClose, onSave, initial }: CategoryDialogProps) {
+function CategoryDialog({
+  open,
+  onClose,
+  onSave,
+  initial,
+}: CategoryDialogProps) {
   const [name, setName] = useState(initial?.name ?? "");
   const [color, setColor] = useState(initial?.color ?? PRESET_COLORS[0]);
   const [saving, setSaving] = useState(false);
@@ -65,7 +78,9 @@ function CategoryDialog({ open, onClose, onSave, initial }: CategoryDialogProps)
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>{initial ? "Rediger kategori" : "Ny kategori"}</DialogTitle>
+          <DialogTitle>
+            {initial ? "Rediger kategori" : "Ny kategori"}
+          </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
@@ -91,7 +106,9 @@ function CategoryDialog({ open, onClose, onSave, initial }: CategoryDialogProps)
               ))}
             </div>
             <div className="flex items-center gap-2 mt-2">
-              <label className="text-xs text-muted-foreground">Egendefinert:</label>
+              <label className="text-xs text-muted-foreground">
+                Egendefinert:
+              </label>
               <input
                 type="color"
                 value={color}
@@ -101,18 +118,25 @@ function CategoryDialog({ open, onClose, onSave, initial }: CategoryDialogProps)
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Forhåndsvisning:</span>
+            <span className="text-sm text-muted-foreground">
+              Forhåndsvisning:
+            </span>
             <span
               className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium"
               style={{ backgroundColor: color + "22", color }}
             >
-              <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+              <span
+                className="inline-block h-2 w-2 rounded-full"
+                style={{ backgroundColor: color }}
+              />
               {name || "Kategori"}
             </span>
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Avbryt</Button>
+          <Button variant="outline" onClick={onClose}>
+            Avbryt
+          </Button>
           <Button onClick={handleSave} disabled={saving || !name.trim()}>
             {saving ? "Lagrer..." : "Lagre"}
           </Button>
@@ -149,19 +173,31 @@ export default function CategoriesPage() {
   };
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Kategorier</h1>
-        <Button onClick={() => { setEditCat(undefined); setDialogOpen(true); }}>
-          <Plus className="h-4 w-4 mr-1" />
-          Ny kategori
-        </Button>
-      </div>
+    <div className="workspace-page">
+      <PageHeading
+        eyebrow="Struktur i arbeidsrommet"
+        title="Kategorier"
+        description="Gi oppdragene en tydelig inndeling. Fargene følger sakene og rapportene."
+        actions={
+          <button
+            className="primary-button"
+            onClick={() => {
+              setEditCat(undefined);
+              setDialogOpen(true);
+            }}
+          >
+            <Plus size={16} />
+            Ny kategori
+          </button>
+        }
+      />
 
       {categories.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground mb-4">Ingen kategorier opprettet ennå</p>
+            <p className="text-muted-foreground mb-4">
+              Ingen kategorier opprettet ennå
+            </p>
             <Button onClick={() => setDialogOpen(true)} variant="outline">
               Opprett første kategori
             </Button>
@@ -171,16 +207,23 @@ export default function CategoriesPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground font-medium">
-              {categories.length} {categories.length === 1 ? "kategori" : "kategorier"}
+              {categories.length}{" "}
+              {categories.length === 1 ? "kategori" : "kategorier"}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="divide-y">
               {categories.map((cat) => (
-                <div key={cat.id} className="flex items-center justify-between py-3">
+                <div
+                  key={cat.id}
+                  className="flex items-center justify-between py-3"
+                >
                   <span
                     className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium"
-                    style={{ backgroundColor: cat.color + "22", color: cat.color }}
+                    style={{
+                      backgroundColor: cat.color + "22",
+                      color: cat.color,
+                    }}
                   >
                     <span
                       className="inline-block h-2.5 w-2.5 rounded-full"
@@ -193,7 +236,10 @@ export default function CategoriesPage() {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
-                      onClick={() => { setEditCat(cat); setDialogOpen(true); }}
+                      onClick={() => {
+                        setEditCat(cat);
+                        setDialogOpen(true);
+                      }}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
@@ -215,12 +261,18 @@ export default function CategoriesPage() {
 
       <CategoryDialog
         open={dialogOpen}
-        onClose={() => { setDialogOpen(false); setEditCat(undefined); }}
+        onClose={() => {
+          setDialogOpen(false);
+          setEditCat(undefined);
+        }}
         onSave={handleSave}
         initial={editCat}
       />
 
-      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+      <AlertDialog
+        open={!!deleteId}
+        onOpenChange={(open) => !open && setDeleteId(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Slett kategori?</AlertDialogTitle>
@@ -230,7 +282,10 @@ export default function CategoriesPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Avbryt</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-red-600 hover:bg-red-700"
+            >
               Slett
             </AlertDialogAction>
           </AlertDialogFooter>

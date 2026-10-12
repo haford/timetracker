@@ -10,12 +10,27 @@ import {
   query,
   orderBy,
   where,
+  limit,
+  startAfter,
   Timestamp,
   onSnapshot,
+  type DocumentData,
+  type QueryConstraint,
+  type QueryDocumentSnapshot,
   type Unsubscribe,
 } from "firebase/firestore";
 import { getFirebaseDb } from "./firebase";
-import type { Case, Category, TimeEntry, CaseStatus, UserSettings, Delfrist, Mote, Begrunnelse, BegrunnelseStatus } from "./types";
+import type {
+  Case,
+  Category,
+  TimeEntry,
+  CaseStatus,
+  UserSettings,
+  Delfrist,
+  Mote,
+  Begrunnelse,
+  BegrunnelseStatus,
+} from "./types";
 
 // ──────────────────────────────────────────
 // Helpers
@@ -33,20 +48,35 @@ const toDate = (v: Timestamp | Date | undefined): Date =>
 
 export const subscribeCategories = (
   userId: string,
-  cb: (cats: Category[]) => void
+  cb: (cats: Category[]) => void,
+  onError?: (error: Error) => void,
 ): Unsubscribe => {
   const q = query(userCol(userId, "categories"), orderBy("name"));
-  return onSnapshot(q, (snap) =>
-    cb(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Category, "id">) })))
+  return onSnapshot(
+    q,
+    (snap) =>
+      cb(
+        snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<Category, "id">),
+        })),
+      ),
+    onError,
   );
 };
 
-export const addCategory = async (userId: string, data: Omit<Category, "id">) => {
+export const addCategory = async (
+  userId: string,
+  data: Omit<Category, "id">,
+) => {
   console.log("[Firestore] addCategory start", { userId, data });
   const colRef = userCol(userId, "categories");
   console.log("[Firestore] collection path:", colRef.path);
   const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error("Firestore-tilkobling timeout etter 8 sekunder")), 8000)
+    setTimeout(
+      () => reject(new Error("Firestore-tilkobling timeout etter 8 sekunder")),
+      8000,
+    ),
   );
   const result = await Promise.race([addDoc(colRef, data), timeout]);
   console.log("[Firestore] addCategory success", result);
@@ -56,8 +86,9 @@ export const addCategory = async (userId: string, data: Omit<Category, "id">) =>
 export const updateCategory = (
   userId: string,
   catId: string,
-  data: Partial<Omit<Category, "id">>
-) => updateDoc(doc(getFirebaseDb(), "users", userId, "categories", catId), data);
+  data: Partial<Omit<Category, "id">>,
+) =>
+  updateDoc(doc(getFirebaseDb(), "users", userId, "categories", catId), data);
 
 export const deleteCategory = (userId: string, catId: string) =>
   deleteDoc(doc(getFirebaseDb(), "users", userId, "categories", catId));
@@ -66,7 +97,10 @@ export const deleteCategory = (userId: string, catId: string) =>
 // Cases
 // ──────────────────────────────────────────
 
-const caseFromDoc = (d: { id: string; data: () => Record<string, unknown> }): Case => {
+const caseFromDoc = (d: {
+  id: string;
+  data: () => Record<string, unknown>;
+}): Case => {
   const data = d.data();
   return {
     id: d.id,
@@ -87,8 +121,10 @@ const caseFromDoc = (d: { id: string; data: () => Record<string, unknown> }): Ca
     isPaid: (data.isPaid as boolean) ?? false,
     honorarTimesats: (data.honorarTimesats as number) || undefined,
     honorarTimefaktor: (data.honorarTimefaktor as number) || undefined,
-    honorarAntallBesvarelser: (data.honorarAntallBesvarelser as number) || undefined,
-    honorarTillegg: (data.honorarTillegg as import("./types").HonorarTillegg[]) || undefined,
+    honorarAntallBesvarelser:
+      (data.honorarAntallBesvarelser as number) || undefined,
+    honorarTillegg:
+      (data.honorarTillegg as import("./types").HonorarTillegg[]) || undefined,
     honorar: (data.honorar as number) || undefined,
     honorarPaid: (data.honorarPaid as boolean) ?? false,
     honorarClaimSent: (data.honorarClaimSent as boolean) ?? false,
@@ -100,24 +136,42 @@ const caseFromDoc = (d: { id: string; data: () => Record<string, unknown> }): Ca
     signertOgInnsendtDate: data.signertOgInnsendtDate
       ? toDate(data.signertOgInnsendtDate as Timestamp)
       : undefined,
-    signertAvtaleStoragePath: (data.signertAvtaleStoragePath as string) || undefined,
-    signertAvtaleDownloadUrl: (data.signertAvtaleDownloadUrl as string) || undefined,
+    signertAvtaleStoragePath:
+      (data.signertAvtaleStoragePath as string) || undefined,
+    signertAvtaleDownloadUrl:
+      (data.signertAvtaleDownloadUrl as string) || undefined,
     signertAvtaleNavn: (data.signertAvtaleNavn as string) || undefined,
     honorarUtbetaltDato: data.honorarUtbetaltDato
-      ? toDate(data.honorarUtbetaltDato as Timestamp) : undefined,
+      ? toDate(data.honorarUtbetaltDato as Timestamp)
+      : undefined,
     honorarUtbetaltBelop: (data.honorarUtbetaltBelop as number) || undefined,
     lonnsslippStoragePath: (data.lonnsslippStoragePath as string) || undefined,
     lonnsslippDownloadUrl: (data.lonnsslippDownloadUrl as string) || undefined,
     lonnsslippNavn: (data.lonnsslippNavn as string) || undefined,
-    gradeProgress: ((data.gradeProgress as Array<{antallRettet: number; loggedAt: Timestamp}>) || []).map(p => ({
-      antallRettet: p.antallRettet as number,
-      loggedAt: toDate(p.loggedAt as Timestamp),
-    })) || undefined,
-    delfrister: ((data.delfrister as Array<{label: string; date: Timestamp}>) || []).map(d => ({
+    gradeProgress:
+      (
+        (data.gradeProgress as Array<{
+          antallRettet: number;
+          loggedAt: Timestamp;
+        }>) || []
+      ).map((p) => ({
+        antallRettet: p.antallRettet as number,
+        loggedAt: toDate(p.loggedAt as Timestamp),
+      })) || undefined,
+    delfrister: (
+      (data.delfrister as Array<{ label: string; date: Timestamp }>) || []
+    ).map((d) => ({
       label: d.label as string,
       date: toDate(d.date as Timestamp),
     })),
-    moter: ((data.moter as Array<{tittel: string; dato: Timestamp; tid?: string; sluttTid?: string}>) || []).map(m => ({
+    moter: (
+      (data.moter as Array<{
+        tittel: string;
+        dato: Timestamp;
+        tid?: string;
+        sluttTid?: string;
+      }>) || []
+    ).map((m) => ({
       tittel: m.tittel as string,
       dato: toDate(m.dato as Timestamp),
       tid: m.tid as string | undefined,
@@ -128,26 +182,27 @@ const caseFromDoc = (d: { id: string; data: () => Record<string, unknown> }): Ca
 
 export const subscribeCases = (
   userId: string,
-  cb: (cases: Case[]) => void
+  cb: (cases: Case[]) => void,
+  onError?: (error: Error) => void,
 ): Unsubscribe => {
   const q = query(userCol(userId, "cases"), orderBy("updatedAt", "desc"));
-  return onSnapshot(q, (snap) => cb(snap.docs.map(caseFromDoc)));
+  return onSnapshot(q, (snap) => cb(snap.docs.map(caseFromDoc)), onError);
 };
 
 export const addCase = (
   userId: string,
-  data: Omit<Case, "id" | "createdAt" | "updatedAt">
+  data: Omit<Case, "id" | "createdAt" | "updatedAt">,
 ) => {
   const now = Timestamp.now();
   return addDoc(userCol(userId, "cases"), {
     ...data,
     startDate: data.startDate ? Timestamp.fromDate(data.startDate) : null,
     deadline: data.deadline ? Timestamp.fromDate(data.deadline) : null,
-    delfrister: (data.delfrister ?? []).map(d => ({
+    delfrister: (data.delfrister ?? []).map((d) => ({
       label: d.label,
       date: Timestamp.fromDate(d.date),
     })),
-    moter: (data.moter ?? []).map(m => ({
+    moter: (data.moter ?? []).map((m) => ({
       tittel: m.tittel,
       dato: Timestamp.fromDate(m.dato),
       ...(m.tid ? { tid: m.tid } : {}),
@@ -161,28 +216,36 @@ export const addCase = (
 export const updateCase = (
   userId: string,
   caseId: string,
-  data: Partial<Omit<Case, "id" | "createdAt">>
+  data: Partial<Omit<Case, "id" | "createdAt">>,
 ) => {
   // Build update object — only include date fields when explicitly provided to
   // avoid sending undefined values which Firestore rejects.
-  const update: Record<string, unknown> = { ...data, updatedAt: Timestamp.now() };
+  const update: Record<string, unknown> = {
+    ...data,
+    updatedAt: Timestamp.now(),
+  };
 
   if ("startDate" in data)
-    update.startDate = data.startDate ? Timestamp.fromDate(data.startDate) : null;
+    update.startDate = data.startDate
+      ? Timestamp.fromDate(data.startDate)
+      : null;
   if ("deadline" in data)
     update.deadline = data.deadline ? Timestamp.fromDate(data.deadline) : null;
   if ("honorarClaimSentDate" in data)
     update.honorarClaimSentDate = data.honorarClaimSentDate
-      ? Timestamp.fromDate(data.honorarClaimSentDate) : null;
+      ? Timestamp.fromDate(data.honorarClaimSentDate)
+      : null;
   if ("signertOgInnsendtDate" in data)
     update.signertOgInnsendtDate = data.signertOgInnsendtDate
-      ? Timestamp.fromDate(data.signertOgInnsendtDate) : null;
+      ? Timestamp.fromDate(data.signertOgInnsendtDate)
+      : null;
   if ("honorarUtbetaltDato" in data)
     update.honorarUtbetaltDato = data.honorarUtbetaltDato
-      ? Timestamp.fromDate(data.honorarUtbetaltDato) : null;
+      ? Timestamp.fromDate(data.honorarUtbetaltDato)
+      : null;
 
   if ("gradeProgress" in data && data.gradeProgress) {
-    update.gradeProgress = data.gradeProgress.map(p => ({
+    update.gradeProgress = data.gradeProgress.map((p) => ({
       antallRettet: p.antallRettet,
       loggedAt: Timestamp.fromDate(p.loggedAt),
     }));
@@ -205,16 +268,26 @@ export const updateCase = (
   }
 
   // Remove undefined values — Firestore rejects them
-  Object.keys(update).forEach((k) => update[k] === undefined && delete update[k]);
+  Object.keys(update).forEach(
+    (k) => update[k] === undefined && delete update[k],
+  );
 
-  return updateDoc(doc(getFirebaseDb(), "users", userId, "cases", caseId), update);
+  return updateDoc(
+    doc(getFirebaseDb(), "users", userId, "cases", caseId),
+    update,
+  );
 };
 
 export const deleteCase = (userId: string, caseId: string) =>
   deleteDoc(doc(getFirebaseDb(), "users", userId, "cases", caseId));
 
-export const getCase = async (userId: string, caseId: string): Promise<Case | null> => {
-  const snap = await getDoc(doc(getFirebaseDb(), "users", userId, "cases", caseId));
+export const getCase = async (
+  userId: string,
+  caseId: string,
+): Promise<Case | null> => {
+  const snap = await getDoc(
+    doc(getFirebaseDb(), "users", userId, "cases", caseId),
+  );
   if (!snap.exists()) return null;
   return caseFromDoc({ id: snap.id, data: snap.data.bind(snap) });
 };
@@ -223,7 +296,10 @@ export const getCase = async (userId: string, caseId: string): Promise<Case | nu
 // Time Entries
 // ──────────────────────────────────────────
 
-const entryFromDoc = (d: { id: string; data: () => Record<string, unknown> }): TimeEntry => {
+const entryFromDoc = (d: {
+  id: string;
+  data: () => Record<string, unknown>;
+}): TimeEntry => {
   const data = d.data();
   return {
     id: d.id,
@@ -237,31 +313,84 @@ const entryFromDoc = (d: { id: string; data: () => Record<string, unknown> }): T
   };
 };
 
+export type TimeEntriesCursor = QueryDocumentSnapshot<DocumentData>;
+
+interface TimeEntriesQueryOptions {
+  caseId?: string;
+  cursor?: TimeEntriesCursor;
+  pageSize?: number;
+}
+
+export interface TimeEntriesPage {
+  entries: TimeEntry[];
+  nextCursor?: TimeEntriesCursor;
+  hasMore: boolean;
+}
+
+const buildTimeEntriesQuery = (
+  userId: string,
+  { caseId, cursor, pageSize }: TimeEntriesQueryOptions = {},
+) => {
+  const constraints: QueryConstraint[] = [];
+
+  if (caseId) {
+    constraints.push(where("caseId", "==", caseId));
+  }
+
+  constraints.push(orderBy("date", "desc"));
+
+  if (cursor) {
+    constraints.push(startAfter(cursor));
+  }
+
+  if (pageSize) {
+    constraints.push(limit(pageSize));
+  }
+
+  return query(userCol(userId, "timeEntries"), ...constraints);
+};
+
 export const subscribeTimeEntries = (
   userId: string,
   cb: (entries: TimeEntry[]) => void,
-  caseId?: string
+  caseId?: string,
+  onError?: (error: Error) => void,
 ): Unsubscribe => {
-  let q = query(userCol(userId, "timeEntries"), orderBy("date", "desc"));
-  if (caseId) {
-    q = query(
-      userCol(userId, "timeEntries"),
-      where("caseId", "==", caseId),
-      orderBy("date", "desc")
-    );
-  }
-  return onSnapshot(q, (snap) => cb(snap.docs.map(entryFromDoc)));
+  const q = buildTimeEntriesQuery(userId, { caseId });
+  return onSnapshot(q, (snap) => cb(snap.docs.map(entryFromDoc)), onError);
 };
 
-export const getAllTimeEntries = async (userId: string): Promise<TimeEntry[]> => {
-  const q = query(userCol(userId, "timeEntries"), orderBy("date", "desc"));
+export const getAllTimeEntries = async (
+  userId: string,
+): Promise<TimeEntry[]> => {
+  const q = buildTimeEntriesQuery(userId);
   const snap = await getDocs(q);
   return snap.docs.map(entryFromDoc);
 };
 
+export const getTimeEntriesPage = async (
+  userId: string,
+  options: TimeEntriesQueryOptions = {},
+): Promise<TimeEntriesPage> => {
+  const pageSize = options.pageSize ?? 200;
+  const q = buildTimeEntriesQuery(userId, {
+    ...options,
+    pageSize: pageSize + 1,
+  });
+  const snap = await getDocs(q);
+  const visibleDocs = snap.docs.slice(0, pageSize);
+  const nextCursor = visibleDocs[visibleDocs.length - 1];
+
+  return {
+    entries: visibleDocs.map(entryFromDoc),
+    nextCursor,
+    hasMore: snap.docs.length > pageSize,
+  };
+};
+
 export const addTimeEntry = (
   userId: string,
-  data: Omit<TimeEntry, "id" | "createdAt">
+  data: Omit<TimeEntry, "id" | "createdAt">,
 ) =>
   addDoc(userCol(userId, "timeEntries"), {
     ...data,
@@ -272,7 +401,7 @@ export const addTimeEntry = (
 export const updateTimeEntry = (
   userId: string,
   entryId: string,
-  data: Partial<Omit<TimeEntry, "id" | "createdAt">>
+  data: Partial<Omit<TimeEntry, "id" | "createdAt">>,
 ) =>
   updateDoc(doc(getFirebaseDb(), "users", userId, "timeEntries", entryId), {
     ...data,
@@ -291,23 +420,36 @@ const settingsDoc = (userId: string) =>
 
 export const subscribeUserSettings = (
   userId: string,
-  cb: (settings: UserSettings) => void
+  cb: (settings: UserSettings) => void,
+  onError?: (error: Error) => void,
 ): Unsubscribe => {
-  return onSnapshot(settingsDoc(userId), (snap) => {
-    if (!snap.exists()) { cb({}); return; }
-    const data = snap.data();
-    cb({ globalSkattetrekk: (data.globalSkattetrekk as number) || undefined });
-  });
+  return onSnapshot(
+    settingsDoc(userId),
+    (snap) => {
+      if (!snap.exists()) {
+        cb({});
+        return;
+      }
+      const data = snap.data();
+      cb({ globalSkattetrekk: data.globalSkattetrekk as number | undefined });
+    },
+    onError,
+  );
 };
 
-export const updateUserSettings = (userId: string, data: Partial<UserSettings>) =>
-  setDoc(settingsDoc(userId), data, { merge: true });
+export const updateUserSettings = (
+  userId: string,
+  data: Partial<UserSettings>,
+) => setDoc(settingsDoc(userId), data, { merge: true });
 
 // ──────────────────────────────────────────
 // Begrunnelser
 // ──────────────────────────────────────────
 
-const begrunnelseFromDoc = (d: { id: string; data: () => Record<string, unknown> }): Begrunnelse => {
+const begrunnelseFromDoc = (d: {
+  id: string;
+  data: () => Record<string, unknown>;
+}): Begrunnelse => {
   const data = d.data();
   return {
     id: d.id,
@@ -330,22 +472,30 @@ const begrunnelseFromDoc = (d: { id: string; data: () => Record<string, unknown>
 export const subscribeBegrunnelser = (
   userId: string,
   cb: (items: Begrunnelse[]) => void,
-  caseId?: string
+  caseId?: string,
+  onError?: (error: Error) => void,
 ): Unsubscribe => {
-  let q = query(userCol(userId, "begrunnelser"), orderBy("fristForBegrunnelse", "asc"));
+  let q = query(
+    userCol(userId, "begrunnelser"),
+    orderBy("fristForBegrunnelse", "asc"),
+  );
   if (caseId) {
     q = query(
       userCol(userId, "begrunnelser"),
       where("caseId", "==", caseId),
-      orderBy("fristForBegrunnelse", "asc")
+      orderBy("fristForBegrunnelse", "asc"),
     );
   }
-  return onSnapshot(q, (snap) => cb(snap.docs.map(begrunnelseFromDoc)));
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map(begrunnelseFromDoc)),
+    onError,
+  );
 };
 
 export const addBegrunnelse = (
   userId: string,
-  data: Omit<Begrunnelse, "id" | "createdAt" | "updatedAt">
+  data: Omit<Begrunnelse, "id" | "createdAt" | "updatedAt">,
 ) => {
   const now = Timestamp.now();
   return addDoc(userCol(userId, "begrunnelser"), {
@@ -362,18 +512,28 @@ export const addBegrunnelse = (
 export const updateBegrunnelse = (
   userId: string,
   begrunnelseId: string,
-  data: Partial<Omit<Begrunnelse, "id" | "createdAt">>
+  data: Partial<Omit<Begrunnelse, "id" | "createdAt">>,
 ) => {
-  const update: Record<string, unknown> = { ...data, updatedAt: Timestamp.now() };
+  const update: Record<string, unknown> = {
+    ...data,
+    updatedAt: Timestamp.now(),
+  };
   if ("fristForBegrunnelse" in data && data.fristForBegrunnelse)
     update.fristForBegrunnelse = Timestamp.fromDate(data.fristForBegrunnelse);
   if ("fristForABeOmBegrunnelse" in data)
     update.fristForABeOmBegrunnelse = data.fristForABeOmBegrunnelse
       ? Timestamp.fromDate(data.fristForABeOmBegrunnelse)
       : null;
-  Object.keys(update).forEach((k) => update[k] === undefined && delete update[k]);
-  return updateDoc(doc(getFirebaseDb(), "users", userId, "begrunnelser", begrunnelseId), update);
+  Object.keys(update).forEach(
+    (k) => update[k] === undefined && delete update[k],
+  );
+  return updateDoc(
+    doc(getFirebaseDb(), "users", userId, "begrunnelser", begrunnelseId),
+    update,
+  );
 };
 
 export const deleteBegrunnelse = (userId: string, begrunnelseId: string) =>
-  deleteDoc(doc(getFirebaseDb(), "users", userId, "begrunnelser", begrunnelseId));
+  deleteDoc(
+    doc(getFirebaseDb(), "users", userId, "begrunnelser", begrunnelseId),
+  );

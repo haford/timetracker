@@ -1,10 +1,10 @@
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
-import { differenceInCalendarDays, startOfDay } from "date-fns"
-import type { GradeProgress } from "./types"
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+import { differenceInCalendarDays, startOfDay } from "date-fns";
+import type { GradeProgress } from "./types";
 
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+  return twMerge(clsx(inputs));
 }
 
 export type Pace =
@@ -19,11 +19,17 @@ export type Pace =
  * - graded = sum of antallRettet from gradeProgress (already graded)
  * - remaining = antall - graded
  */
-export function calcPace(antall: number | undefined, deadline: Date | undefined, gradeProgress?: GradeProgress[]): Pace | null {
+export function calcPace(
+  antall: number | undefined,
+  deadline: Date | undefined,
+  gradeProgress?: GradeProgress[],
+): Pace | null {
   if (!antall || antall <= 0 || !deadline) return null;
 
-  const graded = gradeProgress?.reduce((sum, p) => sum + p.antallRettet, 0) ?? 0;
-  const remaining = antall - graded;
+  const graded =
+    gradeProgress?.reduce((sum, p) => sum + p.antallRettet, 0) ?? 0;
+  const remaining = Math.max(0, antall - graded);
+  if (remaining === 0) return null;
 
   const today = startOfDay(new Date());
   const target = startOfDay(deadline);
@@ -31,7 +37,10 @@ export function calcPace(antall: number | undefined, deadline: Date | undefined,
   const daysLeft = differenceInCalendarDays(target, today) + 1;
 
   if (daysLeft <= 0) {
-    const daysToDeadline = differenceInCalendarDays(startOfDay(deadline), today);
+    const daysToDeadline = differenceInCalendarDays(
+      startOfDay(deadline),
+      today,
+    );
     if (daysToDeadline < 0) return { kind: "overdue" };
     return { kind: "today", total: remaining };
   }

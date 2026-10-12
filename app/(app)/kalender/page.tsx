@@ -1,337 +1,309 @@
-﻿"use client";
+"use client";
 
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useAuth } from "@/hooks/useAuth";
-import { useCases } from "@/hooks/useCases";
 import {
-  startOfMonth, endOfMonth, eachDayOfInterval, addDays,
-  isSameDay, isSameMonth, addMonths, subMonths, getDay,
-  format, isToday, isPast,
+  addMonths,
+  eachDayOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameDay,
+  isSameMonth,
+  isToday,
+  startOfMonth,
+  startOfWeek,
 } from "date-fns";
 import { nb } from "date-fns/locale";
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+} from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useCases } from "@/hooks/useCases";
+import { useBegrunnelser } from "@/hooks/useBegrunnelser";
+import {
+  calendarEvents,
+  meetingCollisions,
+  type CalendarEvent,
+} from "@/lib/calendar";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, AlertTriangle, CheckCircle2, Eye, EyeOff } from "lucide-react";
-import type { Case } from "@/lib/types";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageHeading,
+  Panel,
+} from "@/components/workspace-ui";
 
-type CalEvent = {
-  id: string;
-  caseId: string;
-  caseTitle: string;
-  label: string;
-  date: Date;
-  time?: string;
-  endTime?: string;
-  kind: "frist" | "delfrist" | "mote";
-  avsluttet?: boolean;
+const kinds = {
+  frist: "Saksfrister",
+  delfrist: "Delfrister",
+  mote: "Møter",
+  begrunnelse: "Begrunnelser",
 };
-
-function getEvents(cases: Case[], includeAvsluttede = false): CalEvent[] {
-  const events: CalEvent[] = [];
-  let seq = 0;
-  for (const c of cases) {
-    if (c.status === "avsluttet" && !includeAvsluttede) continue;
-    const avsluttet = c.status === "avsluttet";
-    if (c.deadline) {
-      events.push({ id: `${c.id}-frist-${seq++}`, caseId: c.id, caseTitle: c.title, label: "Frist", date: c.deadline, kind: "frist", avsluttet });
-    }
-    for (const d of c.delfrister ?? []) {
-      events.push({ id: `${c.id}-delfrist-${seq++}`, caseId: c.id, caseTitle: c.title, label: d.label || "Delfrist", date: d.date, kind: "delfrist", avsluttet });
-    }
-    for (const m of c.moter ?? []) {
-      events.push({ id: `${c.id}-mote-${seq++}`, caseId: c.id, caseTitle: c.title, label: m.tittel || "M\u00f8te", date: m.dato, time: m.tid, endTime: m.sluttTid, kind: "mote", avsluttet });
-    }
-  }
-  return events;
-}
-
-/** Returns set of event IDs that collide (mÃ¸ter on same date+time). */
-function findCollisions(events: CalEvent[]): Set<string> {
-  const moter = events.filter(e => e.kind === "mote");
-  // Group by "YYYY-MM-DD|HH:mm" â€” only group when both have a time
-  const byKey = new Map<string, CalEvent[]>();
-  for (const ev of moter) {
-    if (!ev.time) continue;
-    const key = `${format(ev.date, "yyyy-MM-dd")}|${ev.time}`;
-    if (!byKey.has(key)) byKey.set(key, []);
-    byKey.get(key)!.push(ev);
-  }
-  // Also group same-day meetings that have NO time (ambiguous conflicts)
-  const byDay = new Map<string, CalEvent[]>();
-  for (const ev of moter) {
-    if (ev.time) continue;
-    const key = format(ev.date, "yyyy-MM-dd");
-    if (!byDay.has(key)) byDay.set(key, []);
-    byDay.get(key)!.push(ev);
-  }
-
-  const colliding = new Set<string>();
-  for (const [, evts] of byKey) {
-    if (evts.length > 1) evts.forEach(e => colliding.add(e.id));
-  }
-  for (const [, evts] of byDay) {
-    if (evts.length > 1) evts.forEach(e => colliding.add(e.id));
-  }
-  return colliding;
-}
-
-const KIND_CHIP: Record<CalEvent["kind"], string> = {
-  frist: "bg-red-100 text-red-700 border-red-200 hover:bg-red-200",
-  delfrist: "bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-200",
-  mote: "bg-indigo-100 text-indigo-700 border-indigo-200 hover:bg-indigo-200",
-};
-
-const WEEKDAYS = ["Man", "Tir", "Ons", "Tor", "Fre", "LÃ¸r", "SÃ¸n"];
-
 export default function KalenderPage() {
   const { user } = useAuth();
-  const { cases, loading } = useCases(user?.uid);
-  const [currentMonth, setCurrentMonth] = useState(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d;
+  const { cases, loading, error } = useCases(user?.uid);
+  const {
+    begrunnelser,
+    loading: reasonsLoading,
+    error: reasonError,
+  } = useBegrunnelser(user?.uid);
+  const [month, setMonth] = useState(() => startOfMonth(new Date()));
+  const [selected, setSelected] = useState(new Date());
+  const [view, setView] = useState<"month" | "agenda">("month");
+  const [includeDone, setIncludeDone] = useState(false);
+  const [hidden, setHidden] = useState<string[]>([]);
+  const events = useMemo(
+    () => calendarEvents(cases, begrunnelser, includeDone),
+    [cases, begrunnelser, includeDone],
+  );
+  const visible = events.filter((e) => !hidden.includes(e.kind));
+  const monthEvents = visible.filter((e) => isSameMonth(e.date, month));
+  const collisions = meetingCollisions(monthEvents);
+  const days = eachDayOfInterval({
+    start: startOfWeek(month, { weekStartsOn: 1 }),
+    end: endOfWeek(endOfMonth(month), { weekStartsOn: 1 }),
   });
-  const [showAvsluttede, setShowAvsluttede] = useState(false);
-
-  const events = useMemo(() => getEvents(cases, showAvsluttede), [cases, showAvsluttede]);
-  const collisions = useMemo(() => findCollisions(events), [events]);
-  const hasCollisions = collisions.size > 0;
-
-  // Build calendar grid (weeks start Monday)
-  const monthStart = startOfMonth(currentMonth);
-  const monthEnd = endOfMonth(currentMonth);
-  const startOffset = (getDay(monthStart) + 6) % 7;
-  const endOffset = (7 - getDay(monthEnd)) % 7;
-  const gridStart = addDays(monthStart, -startOffset);
-  const gridEnd = addDays(monthEnd, endOffset);
-  const days = eachDayOfInterval({ start: gridStart, end: gridEnd });
-
-  // Upcoming (next 30 days)
-  const today = new Date();
-  const upcomingCutoff = addDays(today, 30);
-  const upcoming = events
-    .filter(e => !isPast(e.date) || isToday(e.date))
-    .filter(e => e.date <= upcomingCutoff)
-    .sort((a, b) => a.date.getTime() - b.date.getTime())
-    .slice(0, 8);
-
-  // Collision details for sidebar: unique colliding mÃ¸ter
-  const collisionGroups = useMemo(() => {
-    const moter = events.filter(e => e.kind === "mote" && collisions.has(e.id));
-    return moter.sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [events, collisions]);
-
+  const selectedEvents = visible.filter((e) => isSameDay(e.date, selected));
+  function navigate(dir: number) {
+    const next = addMonths(month, dir);
+    setMonth(next);
+    setSelected(next);
+  }
+  function today() {
+    const now = new Date();
+    setMonth(startOfMonth(now));
+    setSelected(now);
+  }
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900 capitalize">
-          {format(currentMonth, "MMMM yyyy", { locale: nb })}
-        </h1>
-        <div className="flex items-center gap-1.5">
-          <button onClick={() => setCurrentMonth(m => subMonths(m, 1))} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
-            <ChevronLeft className="h-5 w-5 text-slate-600" />
+    <div className="workspace-page">
+      <PageHeading
+        eyebrow="Planlegg med oversikt"
+        title="Kalender"
+        description="Frister, møter og begrunnelser i én samlet plan."
+        actions={
+          <Link className="secondary-button" href="/cases/new">
+            <Plus size={16} />
+            Ny sak med frist
+          </Link>
+        }
+      />
+      <div className="report-period-nav">
+        <button
+          className="icon-button"
+          onClick={() => navigate(-1)}
+          aria-label="Forrige måned"
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <h2>{format(month, "MMMM yyyy", { locale: nb })}</h2>
+        <button
+          className="icon-button"
+          onClick={() => navigate(1)}
+          aria-label="Neste måned"
+        >
+          <ChevronRight size={18} />
+        </button>
+        <button className="text-link" onClick={today}>
+          I dag
+        </button>
+        <div className="segmented-control">
+          <button
+            className={cn(view === "month" && "selected")}
+            aria-pressed={view === "month"}
+            onClick={() => setView("month")}
+          >
+            Måned
           </button>
           <button
-            onClick={() => { const d = new Date(); d.setDate(1); setCurrentMonth(d); }}
-            className="px-3 py-1.5 text-sm font-medium rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
+            className={cn(view === "agenda" && "selected")}
+            aria-pressed={view === "agenda"}
+            onClick={() => setView("agenda")}
           >
-            I dag
-          </button>
-          <button onClick={() => setCurrentMonth(m => addMonths(m, 1))} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
-            <ChevronRight className="h-5 w-5 text-slate-600" />
-          </button>
-          <button
-            onClick={() => setShowAvsluttede(v => !v)}
-            className={cn(
-              "ml-2 flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors",
-              showAvsluttede
-                ? "bg-slate-700 border-slate-700 text-white hover:bg-slate-800"
-                : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
-            )}
-            title={showAvsluttede ? "Skjul avsluttede saker" : "Vis avsluttede saker"}
-          >
-            {showAvsluttede ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-            Avsluttede
+            Agenda
           </button>
         </div>
       </div>
-
-      {/* Collision banner */}
-      {!loading && (
-        <div className={cn(
-          "mb-4 flex items-center gap-2.5 rounded-xl border px-4 py-2.5 text-sm font-medium",
-          hasCollisions
-            ? "bg-red-50 border-red-200 text-red-700"
-            : "bg-emerald-50 border-emerald-200 text-emerald-700"
-        )}>
-          {hasCollisions ? (
-            <>
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              {collisionGroups.length} mÃ¸te{collisionGroups.length !== 1 ? "r" : ""} med kollisjoner â€” se markerte oppfÃ¸ringer
-            </>
-          ) : (
-            <>
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-              Ingen kollisjoner
-            </>
-          )}
+      <div className="calendar-filters">
+        {Object.entries(kinds).map(([id, label]) => (
+          <button
+            key={id}
+            aria-pressed={!hidden.includes(id)}
+            className={cn("calendar-filter", hidden.includes(id) && "muted")}
+            onClick={() =>
+              setHidden((s) =>
+                s.includes(id) ? s.filter((k) => k !== id) : [...s, id],
+              )
+            }
+          >
+            <i className={`event-dot ${id}`} />
+            {label}
+          </button>
+        ))}
+        <label>
+          <input
+            type="checkbox"
+            checked={includeDone}
+            onChange={(e) => setIncludeDone(e.target.checked)}
+          />
+          Vis avsluttede saker og sendte begrunnelser
+        </label>
+      </div>
+      {collisions.size > 0 && (
+        <div className="calendar-warning" role="status">
+          <AlertTriangle size={17} />
+          {collisions.size} møter har overlappende klokkeslett i denne måneden.
         </div>
       )}
-
-      <div className="flex gap-5 items-start">
-        {/* Calendar */}
-        <div className="flex-1 min-w-0">
-          {/* Legend */}
-          <div className="flex items-center gap-4 mb-3 text-xs text-slate-500">
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />Frist</span>
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" />Delfrist</span>
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block" />MÃ¸te</span>
-            {hasCollisions && (
-              <span className="flex items-center gap-1.5 text-red-500 font-semibold">
-                <AlertTriangle className="h-3 w-3" />Kollisjon
-              </span>
-            )}
-          </div>
-
-          {/* Grid */}
-          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-            <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
-              {WEEKDAYS.map((d) => (
-                <div key={d} className="py-2 text-center text-xs font-semibold text-slate-400 uppercase tracking-wide">{d}</div>
+      {error || reasonError ? (
+        <ErrorState message={error || reasonError!} />
+      ) : loading || reasonsLoading ? (
+        <LoadingState label="Henter kalenderen…" />
+      ) : view === "month" ? (
+        <div className="calendar-layout">
+          <div className="calendar-month">
+            <div className="calendar-weekdays">
+              {["Man", "Tir", "Ons", "Tor", "Fre", "Lør", "Søn"].map((d) => (
+                <span key={d}>{d}</span>
               ))}
             </div>
-            {loading ? (
-              <div className="h-96 flex items-center justify-center text-sm text-slate-400">Laster...</div>
-            ) : (
-              <div className="grid grid-cols-7">
-                {days.map((day) => {
-                  const inMonth = isSameMonth(day, currentMonth);
-                  const todayCell = isToday(day);
-                  const dayEvents = events
-                    .filter(e => isSameDay(e.date, day))
-                    .sort((a, b) => {
-                      if (a.time && !b.time) return -1;
-                      if (!a.time && b.time) return 1;
-                      if (a.time && b.time) return a.time.localeCompare(b.time);
-                      return 0;
-                    });
-                  const dayHasCollision = dayEvents.some(e => collisions.has(e.id));
-
-                  return (
-                    <div
-                      key={day.toISOString()}
-                      className={cn(
-                        "min-h-[88px] p-1.5 border-b border-r border-slate-100 flex flex-col gap-0.5",
-                        !inMonth && "bg-slate-50/70",
-                        dayHasCollision && "bg-red-50/40",
+            <div className="calendar-grid">
+              {days.map((date) => {
+                const dayEvents = visible.filter((e) =>
+                  isSameDay(e.date, date),
+                );
+                return (
+                  <button
+                    key={date.toISOString()}
+                    className={cn(
+                      "calendar-day",
+                      !isSameMonth(date, month) && "outside",
+                      isSameDay(date, selected) && "selected",
+                      isToday(date) && "today",
+                    )}
+                    onClick={() => setSelected(date)}
+                    aria-pressed={isSameDay(date, selected)}
+                    aria-label={`${format(date, "EEEE d. MMMM", { locale: nb })}, ${dayEvents.length} hendelser`}
+                  >
+                    <span className="calendar-day-number">
+                      {format(date, "d")}
+                    </span>
+                    <div className="calendar-day-events">
+                      {dayEvents.slice(0, 3).map((e) => (
+                        <span
+                          key={e.id}
+                          className={cn(
+                            "calendar-event-chip",
+                            e.kind,
+                            e.done && "done",
+                          )}
+                        >
+                          <i className={`event-dot ${e.kind}`} />
+                          <span>
+                            {e.time ? `${e.time} ` : ""}
+                            {e.title}
+                          </span>
+                        </span>
+                      ))}
+                      {dayEvents.length > 3 && (
+                        <span className="calendar-more">
+                          +{dayEvents.length - 3}
+                        </span>
                       )}
-                    >
-                      <div className="flex justify-between items-center mb-0.5">
-                        <span className="w-4">
-                          {dayHasCollision && <AlertTriangle className="h-3 w-3 text-red-500" />}
-                        </span>
-                        <span className={cn(
-                          "text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full",
-                          todayCell ? "bg-indigo-600 text-white font-bold"
-                            : inMonth ? "text-slate-700" : "text-slate-300",
-                        )}>
-                          {format(day, "d")}
-                        </span>
-                      </div>
-                      {dayEvents.map((ev) => {
-                        const isColliding = collisions.has(ev.id);
-                        return (
-                          <Link key={ev.id} href={`/cases/${ev.caseId}`} title={`${ev.caseTitle} â€” ${ev.label}`}>
-                            <span className={cn(
-                              "block truncate text-[11px] font-medium px-1.5 py-0.5 rounded border leading-tight transition-colors",
-                              isColliding
-                                ? "bg-red-100 text-red-700 border-red-400 ring-1 ring-red-400 hover:bg-red-200"
-                                : ev.avsluttet
-                                  ? "bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 opacity-70"
-                                  : KIND_CHIP[ev.kind],
-                            )}>
-                              {isColliding && <AlertTriangle className="inline h-2.5 w-2.5 mr-0.5 -mt-px" />}
-                              {ev.time && <span className="font-bold mr-0.5">{ev.time}{ev.endTime ? `\u2013${ev.endTime}` : ""} </span>}
-                              {ev.label !== "Frist" && ev.label !== "Delfrist" && ev.label !== "MÃ¸te"
-                                ? ev.label
-                                : ev.caseTitle}
-                            </span>
-                          </Link>
-                        );
-                      })}
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-
-        {/* Sidebar */}
-        <div className="w-64 shrink-0 space-y-5">
-          {/* Collisions panel */}
-          {hasCollisions && (
-            <div>
-              <p className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Kollisjoner ({collisionGroups.length})
-              </p>
-              <div className="space-y-1.5">
-                {collisionGroups.map((ev) => (
-                  <Link key={ev.id} href={`/cases/${ev.caseId}`} className="block">
-                    <div className="rounded-lg border bg-red-50 border-red-200 px-3 py-2 hover:bg-red-100 transition-colors">
-                      <p className="text-xs font-bold text-red-700 truncate">
-                        {ev.time ? `${ev.time}${ev.endTime ? `\u2013${ev.endTime}` : ""} \u00b7 ` : ""}{ev.caseTitle}
-                      </p>
-                      <p className="text-[11px] text-red-500 mt-0.5 flex items-center justify-between">
-                        <span>{ev.label}</span>
-                        <span className="font-semibold">{format(ev.date, "d. MMM", { locale: nb })}</span>
-                      </p>
-                    </div>
-                  </Link>
+          <Panel
+            title={
+              isToday(selected)
+                ? "I dag"
+                : format(selected, "EEEE d. MMMM", { locale: nb })
+            }
+            subtitle={`${selectedEvents.length} hendelser`}
+            className="calendar-agenda"
+          >
+            {selectedEvents.length ? (
+              <div className="agenda-events">
+                {selectedEvents.map((e) => (
+                  <EventRow
+                    key={e.id}
+                    event={e}
+                    collision={collisions.has(e.id)}
+                  />
                 ))}
               </div>
-            </div>
-          )}
-
-          {/* Upcoming panel */}
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
-              Kommende (30 dager)
-            </p>
-            {upcoming.length === 0 ? (
-              <p className="text-sm text-slate-400">Ingen kommende hendelser</p>
             ) : (
-              <div className="space-y-1.5">
-                {upcoming.map((ev) => {
-                  const isColliding = collisions.has(ev.id);
-                  return (
-                    <Link key={ev.id} href={`/cases/${ev.caseId}`} className="block">
-                      <div className={cn(
-                        "rounded-lg border px-3 py-2 transition-colors",
-                        isColliding
-                          ? "bg-red-50 border-red-300 hover:bg-red-100"
-                          : KIND_CHIP[ev.kind],
-                      )}>
-                        <p className={cn("text-xs font-bold truncate flex items-center gap-1", isColliding && "text-red-700")}>
-                          {isColliding && <AlertTriangle className="h-3 w-3 shrink-0" />}
-                          {ev.time ? `${ev.time}${ev.endTime ? `\u2013${ev.endTime}` : ""} \u00b7 ` : ""}{ev.caseTitle}
-                        </p>
-                        <p className={cn("text-[11px] opacity-80 mt-0.5 flex items-center justify-between", isColliding && "text-red-600")}>
-                          <span>{ev.label}</span>
-                          <span className="font-semibold">{format(ev.date, "d. MMM", { locale: nb })}</span>
-                        </p>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
+              <EmptyState
+                compact
+                title="Ingen hendelser denne dagen"
+                description="Velg en annen dag for å se frister og møter."
+              />
             )}
-          </div>
+          </Panel>
         </div>
-      </div>
+      ) : (
+        <Panel
+          title="Denne månedens hendelser"
+          subtitle={`${monthEvents.length} hendelser · sortert etter dato`}
+        >
+          {monthEvents.length ? (
+            <div className="agenda-month-list">
+              {monthEvents.map((e, i) => (
+                <div key={e.id}>
+                  {(i === 0 || !isSameDay(monthEvents[i - 1].date, e.date)) && (
+                    <h3>{format(e.date, "EEEE d. MMMM", { locale: nb })}</h3>
+                  )}
+                  <EventRow event={e} collision={collisions.has(e.id)} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="En åpen kalender"
+              description="Frister og møter fra sakene dine vises her."
+            />
+          )}
+        </Panel>
+      )}
     </div>
   );
 }
-
+function EventRow({
+  event: e,
+  collision,
+}: {
+  event: CalendarEvent;
+  collision: boolean;
+}) {
+  return (
+    <Link href={e.href} className="agenda-event">
+      <i className={`event-dot ${e.kind}`} />
+      <span>
+        <strong>{e.title}</strong>
+        <small>{e.detail}</small>
+        <span>
+          {e.time
+            ? `${e.time}${e.endTime ? `–${e.endTime}` : ""}`
+            : kinds[e.kind]}
+          {e.done && (
+            <span className="inline-flex items-center gap-1 ml-2">
+              <Check size={11} />
+              Ferdig
+            </span>
+          )}
+          {collision && <span className="text-danger ml-2">Overlapp</span>}
+        </span>
+      </span>
+      <ArrowUpRight size={14} />
+    </Link>
+  );
+}
